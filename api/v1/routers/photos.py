@@ -7,7 +7,7 @@ from db.session import get_db
 from models import User
 from services.photo_service import ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES, delete_user_photo, get_user_photo_path, photo_etag, save_user_photo
 
-router = APIRouter()
+router = APIRouter(tags=["Photos & Profiles"])
 
 
 def _authorize_photo_change(current: User, user_id: int) -> None:
