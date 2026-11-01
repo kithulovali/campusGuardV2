@@ -1,20 +1,27 @@
-"""
-Features: 2-Lockdown, 3-Photo, 4-QR compromise, 5-Guard stats,
-          7-Visitor pre-reg, 8-Bulk import, 9-Audit log, 12-QR expiry
-"""
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
 from datetime import datetime, timedelta, date
-from typing import Optional, List
-from pydantic import BaseModel
-import secrets, json, io, os, shutil
-from db.session import get_db
-from models import User, Gate, Alert, Entry, AuditLog, SystemState, Visitor
-from core.dependencies import require_admin, require_guard, get_current_user
+from io import BytesIO
+from pathlib import Path
+from typing import Optional
+import hashlib
+import io
+import json
+import os
+import secrets
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import FileResponse, StreamingResponse
+from PIL import Image as PILImage, UnidentifiedImageError
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, func
+from sqlalchemy.orm import Session
+
+from core.dependencies import get_current_user, require_admin, require_guard
 from core.security import hash_password
+from db.session import get_db
+from models import Alert, AuditLog, Entry, Gate, SystemState, User, Visitor
 from utils.qr import generate_qr_hash, generate_qr_image
+
 
 router = APIRouter(tags=["features"])
 
@@ -71,93 +78,137 @@ def set_lockdown(body: LockdownRequest, db: Session = Depends(get_db), admin=Dep
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FEATURE 3 — PHOTO UPLOAD
-# ══════════════════════════════════════════════════════════════════════════════
-PHOTO_DIR = "static/photos"
-os.makedirs(PHOTO_DIR, exist_ok=True)
+# ═════════════════════════════════════════════════════════════════════PHOTO_DIR = Path(__file__).resolve().parents[3] / "static" / "photos"
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
 
 @router.post("/users/{user_id}/photo")
-async def upload_photo(user_id: int, file: UploadFile = File(...),
-                       db: Session = Depends(get_db), current=Depends(get_current_user)):
-    # Students/staff can upload their own photo; admin can upload for anyone
-    if current.role not in ("admin",) and current.id != user_id:
-        raise HTTPException(403, "Can only upload your own photo")
-    admin = current  # reuse audit variable
+async def upload_photo(
+    user_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    if current.role != "admin" and current.id != user_id:
+        raise HTTPException(status_code=403, detail="Can only upload your own photo")
+
     user = db.query(User).filter(User.id == user_id).first()
-    if not user: raise HTTPException(404, "User not found")
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(400, "File must be an image")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if file.content_type not in ALLOWED_PHOTO_TYPES:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG, and WebP images are accepted")
 
-    ext  = file.filename.rsplit(".", 1)[-1].lower()
-    name = f"{user.qr_code}.{ext}"
-    path = os.path.join(PHOTO_DIR, name)
+    content = await file.read(MAX_PHOTO_BYTES + 1)
+    await file.close()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty")
+    if len(content) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=413, detail="Photo must not exceed 5 MB")
 
-    with open(path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    try:
+        with PILImage.open(BytesIO(content)) as image:
+            image.verify()
+        with PILImage.open(BytesIO(content)) as image:
+            image = image.convert("RGB")
+            image.thumbnail((1600, 1600), PILImage.Resampling.LANCZOS)
+            PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+            filename = f"user-{user.id}-{uuid.uuid4().hex}.jpg"
+            destination = PHOTO_DIR / filename
+            image.save(destination, format="JPEG", quality=88, optimize=True)
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
 
-    user.photo = f"/static/photos/{name}"
-    audit(db, admin, "user.photo_upload", "user", user_id)
-    db.commit()
+    previous_photo = user.photo
+    user.photo = f"/static/photos/{filename}"
+    try:
+        audit(db, current, "user.photo_upload", "user", user_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Could not save photo record")
+
+    if previous_photo:
+        old_path = PHOTO_DIR / Path(previous_photo).name
+        if old_path != destination:
+            old_path.unlink(missing_ok=True)
+            for variant in ("thumb", "small"):
+                (PHOTO_DIR / f"{old_path.stem}_{variant}.jpg").unlink(missing_ok=True)
+
     return {"photo_url": user.photo}
 
-from fastapi.responses import FileResponse, Response
-import hashlib, time
 
 @router.get("/users/{user_id}/photo")
 def get_photo(
     user_id: int,
-    size: str = "full",   # full | thumb (80px) | small (160px)
+    size: str = Query(default="full", pattern="^(full|thumb|small)$"),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user)
+    _: User = Depends(get_current_user),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.photo:
-        raise HTTPException(404, "No photo")
+        raise HTTPException(status_code=404, detail="No photo")
 
-    # Serve the right size
-    base_path = user.photo.lstrip("/")
-    size_path  = base_path.replace(".jpg", f"_{size}.jpg") if size != "full" else base_path
+    source_path = PHOTO_DIR / Path(user.photo).name
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="Photo file not found")
 
-    if not os.path.exists(size_path):
-        # Generate the requested size on-demand
-        if os.path.exists(base_path) and size in ("thumb", "small"):
-            from PIL import Image as PILImage
-            import io as _io
-            img  = PILImage.open(base_path).convert("RGB")
-            dims = {"thumb": (80, 80), "small": (160, 160)}
-            img.thumbnail(dims[size], PILImage.LANCZOS)
-            img.save(size_path, format="JPEG", quality=80, optimize=True)
-        elif os.path.exists(base_path):
-            size_path = base_path
-        else:
-            raise HTTPException(404, "Photo file not found")
+    selected_path = source_path
+    if size in {"thumb", "small"}:
+        selected_path = PHOTO_DIR / f"{source_path.stem}_{size}.jpg"
+        if not selected_path.is_file():
+            dimensions = {"thumb": (80, 80), "small": (160, 160)}
+            try:
+                with PILImage.open(source_path) as image:
+                    image = image.convert("RGB")
+                    image.thumbnail(dimensions[size], PILImage.Resampling.LANCZOS)
+                    image.save(selected_path, format="JPEG", quality=82, optimize=True)
+            except (UnidentifiedImageError, OSError):
+                raise HTTPException(status_code=500, detail="Stored photo could not be processed")
 
-    # ETag based on file modification time
-    mtime    = os.path.getmtime(size_path)
-    etag     = hashlib.md5(f"{size_path}{mtime}".encode()).hexdigest()
-
+    digest = hashlib.sha256(selected_path.read_bytes()).hexdigest()
     return FileResponse(
-        size_path,
+        selected_path,
         media_type="image/jpeg",
         headers={
-            "Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
-            "ETag": etag,
-            "Vary": "Accept-Encoding",
-        }
+            "Cache-Control": "private, max-age=3600",
+            "ETag": f'"{digest}"',
+            "Vary": "Authorization",
+        },
     )
+
+
 @router.delete("/users/{user_id}/photo")
-def delete_photo(user_id: int, db: Session = Depends(get_db), current=Depends(get_current_user)):
-    # Student can only delete their own; admin can delete any
-    if current.role not in ("admin",) and current.id != user_id:
-        raise HTTPException(403, "Can only delete your own photo")
+def delete_photo(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    if current.role != "admin" and current.id != user_id:
+        raise HTTPException(status_code=403, detail="Can only delete your own photo")
+
     user = db.query(User).filter(User.id == user_id).first()
-    if not user: raise HTTPException(404, "User not found")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     if user.photo:
-        path = user.photo.lstrip("/")
-        if os.path.exists(path): os.remove(path)
+        old_path = PHOTO_DIR / Path(user.photo).name
         user.photo = None
-        audit(db, current, "user.photo_delete", "user", user_id)
-        db.commit()
+        try:
+            audit(db, current, "user.photo_delete", "user", user_id)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Could not delete photo record")
+        old_path.unlink(missing_ok=True)
+        for variant in ("thumb", "small"):
+            (PHOTO_DIR / f"{old_path.stem}_{variant}.jpg").unlink(missing_ok=True)
+
     return {"message": "Photo deleted"}
+
+
+eted"}
 
 
 
