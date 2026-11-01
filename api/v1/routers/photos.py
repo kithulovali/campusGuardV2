@@ -1,26 +1,21 @@
-from datetime import datetime, timedelta, date
+import hashlib
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
-import hashlib
-import io
-import os
-import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from PIL import Image as PILImage, UnidentifiedImageError
-from pydantic import BaseModel, Field
-from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from core.dependencies import get_current_user, require_admin, require_guard
-from core.security import hash_password
+from core.dependencies import get_current_user
 from db.session import get_db
-from models import Alert, Entry, Gate, SystemState, User, Visitor
-from utils.qr import QR_DIR, generate_qr_hash, generate_qr_image
+from models import User
 from services.audit_service import record_audit
+
+PHOTO_DIR = Path(__file__).resolve().parents[3] / "static" / "photos"
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 router = APIRouter()
@@ -72,7 +67,7 @@ async def upload_photo(
     previous_photo = user.photo
     user.photo = f"/static/photos/{filename}"
     try:
-        record_audit(db, current, "user.photo_upload", "user", user_id)
+        record_record_audit(db, current, "user.photo_upload", "user", user_id)
         db.commit()
     except Exception:
         db.rollback()
