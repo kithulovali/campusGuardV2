@@ -9,7 +9,7 @@ from db.session import get_db
 from models.user import User
 from services.lockdown_service import get_lockdown_state, update_lockdown
 
-router = APIRouter()
+router = APIRouter(tags=["Administration"])
 
 
 class LockdownRequest(BaseModel):
