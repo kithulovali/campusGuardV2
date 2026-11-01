@@ -15,6 +15,10 @@ settings = SimpleNamespace(
     app_name=os.getenv("APP_NAME", "CampusGuard API"),
     app_version=os.getenv("APP_VERSION", "3.0.0"),
     environment=os.getenv("ENVIRONMENT", "development"),
+    # Prefer the separate Turso credentials; DATABASE_URL remains supported
+    # for existing deployments and other SQLAlchemy-compatible databases.
+    turso_database_url=os.getenv("TURSO_DATABASE_URL") or None,
+    turso_auth_token=os.getenv("TURSO_AUTH_TOKEN") or None,
     database_url=os.getenv("DATABASE_URL") or None,
     db_host=os.getenv("DB_HOST", "localhost"),
     db_port=int(os.getenv("DB_PORT", "3306")),
@@ -28,3 +32,6 @@ settings = SimpleNamespace(
 )
 if settings.access_token_expire_minutes <= 0 or settings.refresh_token_expire_days <= 0:
     raise RuntimeError("Token expiration settings must be positive.")
+
+if bool(settings.turso_database_url) != bool(settings.turso_auth_token):
+    raise RuntimeError("Set both TURSO_DATABASE_URL and TURSO_AUTH_TOKEN when using Turso.")
