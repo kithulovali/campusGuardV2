@@ -1,6 +1,5 @@
 from datetime import datetime
 from typing import Optional
-import secrets
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -17,10 +16,10 @@ router = APIRouter()
 class PreRegRequest(BaseModel):
     visitor_name: str = Field(min_length=2, max_length=120)
     visitor_email: Optional[str] = None
-    visitor_phone: Optional[str] = Field(default=None, max_length=30)
+    visitor_phone: Optional[str] = Field(default=None, max_length=20)
     reason: str = Field(min_length=2, max_length=500)
-    expected_date: str = Field(pattern=r"^\\d{4}-\\d{2}-\\d{2}$")
-    expected_time: str = Field(pattern=r"^\\d{2}:\\d{2}$")
+    expected_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    expected_time: str = Field(pattern=r"^\d{2}:\d{2}$")
 
 
 @router.post("/visitors/pre-register")
