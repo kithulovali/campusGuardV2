@@ -315,7 +315,7 @@ def get_entries(
     user_id: int | None = Query(default=None, gt=0),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_guard),
 ):
     query = db.query(Entry).options(joinedload(Entry.user)).order_by(
         desc(Entry.scanned_at), desc(Entry.id)
@@ -343,7 +343,7 @@ def get_entries(
 @router.get("/dashboard/stats")
 def dashboard_stats(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_guard),
 ):
     today = date.today()
     total_users = db.query(func.count(User.id)).scalar() or 0
