@@ -48,9 +48,10 @@ def get_weekly_traffic(db: Session) -> list[dict]:
 def get_guard_statistics(db: Session) -> list[dict]:
     today = date.today()
     guards = db.query(User).filter(User.role == "guard").all()
+    alerts_today = db.query(func.count(Alert.id)).filter(func.date(Alert.timestamp) == today).scalar() or 0
     result = []
     for guard in guards:
         today_count = db.query(func.count(Entry.id)).filter(Entry.approved_by == guard.id, func.date(Entry.scanned_at) == today).scalar() or 0
         total_count = db.query(func.count(Entry.id)).filter(Entry.approved_by == guard.id).scalar() or 0
-        result.append({"id": guard.id, "name": guard.full_name, "status": guard.status, "approved_today": today_count, "approved_total": total_count})
+        result.append({"id": guard.id, "name": guard.full_name, "status": guard.status, "approved_today": today_count, "approved_total": total_count, "alerts_today": alerts_today})
     return result
