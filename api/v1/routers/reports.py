@@ -6,7 +6,7 @@ from core.dependencies import require_admin
 from db.session import get_db
 from services.report_service import generate_attendance_report
 
-router = APIRouter()
+router = APIRouter(tags=["Reports & Analytics"])
 
 
 @router.get("/reports/generate")
