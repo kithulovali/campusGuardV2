@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from core.dependencies import get_current_user, require_admin, require_guard
 from core.security import hash_password
 from db.session import get_db
-from models import Alert, AuditLog, Entry, Gate, SystemState, User, Visitor
+from models import Alert, AuditLog, Entry, SystemState, User, Visitor
 from utils.qr import generate_qr_hash, generate_qr_image
 
 
@@ -281,7 +281,7 @@ class PreRegRequest(BaseModel):
 @router.post("/visitors/pre-register")
 def pre_register_visitor(body: PreRegRequest, db: Session = Depends(get_db), host=Depends(get_current_user)):
     token = secrets.token_urlsafe(32)
-    expected_dt = datetime.strptime(f"{body.expected_date} {body.expected_time}", "%Y-%m-%d %H:%M")
+    try:\n        expected_dt = datetime.strptime(\n            f"{body.expected_date} {body.expected_time}", "%Y-%m-%d %H:%M"\n        )\n    except ValueError:\n        raise HTTPException(\n            status_code=422,\n            detail="expected_date must be YYYY-MM-DD and expected_time must be HH:MM",\n        )
 
     visitor = Visitor(
         name=body.visitor_name,
