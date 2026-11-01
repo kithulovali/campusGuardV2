@@ -10,7 +10,7 @@ from models import Alert, Entry, Gate, User, Visitor
 from schemas.schemas import AdmitRequest, ScanRequest
 from services.gate_service import check_visitor_overstays, find_active_gate, get_last_direction, is_locked_down, is_qr_expired, log_denied_scan
 
-router = APIRouter(prefix="/gates", tags=["Gates"])
+router = APIRouter(prefix="/gates", tags=["Gates & Access Control"])
 
 
 def get_active_gate(db: Session, gate_id: int) -> Gate:
