@@ -7,7 +7,7 @@ from db.session import get_db
 from models import User
 from services.bulk_user_service import MAX_IMPORT_BYTES, build_import_template, import_users_workbook
 
-router = APIRouter()
+router = APIRouter(tags=["Administration"])
 
 
 @router.post("/users/bulk-import")
