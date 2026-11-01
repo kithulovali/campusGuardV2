@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from db.session import Base
+from api.v1.routers.visitor_preregistration import PreRegRequest
 from models import Alert, AuditLog, User, Visitor
 from services.audit_service import record_audit
 from services.overstay_service import create_missing_overstay_alerts
@@ -96,3 +97,24 @@ def test_overstay_alert_generation_is_idempotent_per_day(db_session):
     assert first == ["Late Visitor"]
     assert second == []
     assert len(alerts) == 1
+
+
+def test_preregistration_date_and_time_patterns_accept_valid_values():
+    payload = PreRegRequest(
+        visitor_name="Scheduled Guest",
+        reason="Meeting",
+        expected_date="2026-11-02",
+        expected_time="14:30",
+    )
+    assert payload.expected_date == "2026-11-02"
+    assert payload.expected_time == "14:30"
+
+
+def test_preregistration_date_pattern_rejects_invalid_values():
+    with pytest.raises(Exception):
+        PreRegRequest(
+            visitor_name="Scheduled Guest",
+            reason="Meeting",
+            expected_date="not-a-date",
+            expected_time="14:30",
+        )
