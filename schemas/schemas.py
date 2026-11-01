@@ -45,7 +45,7 @@ class RegistrationRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     reg_number: str = Field(min_length=2, max_length=60)
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=10, max_length=72)
 
 
 class UserCreate(BaseModel):
