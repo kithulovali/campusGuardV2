@@ -1,21 +1,33 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from collections.abc import Generator
+from sqlalchemy import URL, create_engine
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from app.core.config import settings
 
-DATABASE_URL = (
-    f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}"
-    f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-)
-
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 class Base(DeclarativeBase):
     pass
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+def build_database_url() -> str | URL:
+    if settings.database_url:
+        return settings.database_url
+    return URL.create(
+        "mysql+pymysql",
+        username=settings.db_user,
+        password=settings.db_password.get_secret_value(),
+        host=settings.db_host,
+        port=settings.db_port,
+        database=settings.db_name,
+        query={"charset": "utf8mb4"},
+    )
+
+
+engine = create_engine(build_database_url(), pool_pre_ping=True,
+                       pool_recycle=1800, pool_size=5, max_overflow=10)
+SessionLocal = sessionmaker(bind=engine, class_=Session, autoflush=False,
+                            expire_on_commit=False)
+
+
+def get_db() -> Generator[Session, None, None]:
+    with SessionLocal() as session:
+        yield session
