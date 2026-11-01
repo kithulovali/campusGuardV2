@@ -1,23 +1,30 @@
-from pydantic_settings import BaseSettings
+from functools import lru_cache
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8",
+                                      case_sensitive=False, extra="ignore")
 
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 3306
-    DB_USER: str = "root"
-    DB_PASSWORD: str = "SchoolEvents2026"
-    DB_NAME: str = "campusguard"
-
-    SECRET_KEY: str = "change-this-secret"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-
-    FRONTEND_URL: str = "http://localhost:3000"
-
-    class Config:
-        env_file = ".env"
+    app_name: str = "CampusGuard API"
+    app_version: str = "3.0.0"
+    environment: str = "development"
+    database_url: str | None = None
+    db_host: str = "localhost"
+    db_port: int = 3306
+    db_user: str = "campusguard"
+    db_password: SecretStr
+    db_name: str = "campusguard"
+    secret_key: SecretStr = Field(min_length=32)
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = Field(default=30, gt=0)
+    refresh_token_expire_days: int = Field(default=7, gt=0)
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
