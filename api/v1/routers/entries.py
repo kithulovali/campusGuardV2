@@ -5,7 +5,7 @@ from core.dependencies import require_guard
 from db.session import get_db
 from services.dashboard_service import get_entry_history
 
-router = APIRouter()
+router = APIRouter(tags=["Gates & Access Control"])
 
 
 @router.get("/entries")
