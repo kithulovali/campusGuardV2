@@ -274,7 +274,13 @@ def generate_report(
         start = datetime.combine(today - timedelta(days=180), datetime.min.time())
         end   = datetime.utcnow()
 
-    entries = (\n        db.query(Entry)\n        .filter(Entry.scanned_at.between(start, end))\n        .order_by(desc(Entry.scanned_at))\n        .limit(5000)\n        .all()\n    )
+    entries = (
+        db.query(Entry)
+        .filter(Entry.scanned_at.between(start, end))
+        .order_by(desc(Entry.scanned_at))
+        .limit(5000)
+        .all()
+    )
 
     if format == "pdf":
         from reportlab.lib.pagesizes import A4
