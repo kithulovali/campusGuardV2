@@ -11,7 +11,7 @@ from models.alert import Alert
 from models.user import User
 from services.alert_service import create_alert, resolve_alert
 
-router = APIRouter()
+router = APIRouter(tags=["Alerts & Incidents"])
 
 
 class AlertCreate(BaseModel):
