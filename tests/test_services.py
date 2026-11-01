@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from db.session import Base
-from models import Alert, User, Visitor
+from models import Alert, AuditLog, User, Visitor
 from services.audit_service import record_audit
 from services.overstay_service import create_missing_overstay_alerts
 from services.visitor_service import checkout_visitor, pre_register_visitor, register_visitor
@@ -33,7 +33,7 @@ def db_session():
 def test_audit_service_adds_event_to_current_transaction(db_session):
     record_audit(db_session, None, "system.test", detail={"source": "test"})
     db_session.commit()
-    event = db_session.query(__import__("models").AuditLog).one()
+    event = db_session.query(AuditLog).one()
     assert event.actor_name == "System"
     assert event.action == "system.test"
     assert '"source": "test"' in event.detail
