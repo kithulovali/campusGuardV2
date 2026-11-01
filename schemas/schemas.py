@@ -41,6 +41,13 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
 
 
+class RegistrationRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    reg_number: str = Field(min_length=2, max_length=60)
+    password: str = Field(min_length=10, max_length=128)
+
+
 class UserCreate(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     email: EmailStr
