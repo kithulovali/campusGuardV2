@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import List, Literal
 import io, secrets
 from db.session import get_db
-from models import Visitor, Alert, Entry, User
+from models import Visitor, Alert, Entry, Gate, User
 from schemas.schemas import VisitorCreate, VisitorOut, AlertOut
 from core.dependencies import get_current_user, require_guard, require_admin
 from pydantic import BaseModel, Field
@@ -106,10 +106,24 @@ def create_visitor(
 
 
 @router.patch("/visitors/{visitor_id}/checkout")
-def checkout_visitor(visitor_id: int, db: Session = Depends(get_db), _=Depends(require_guard)):
-    v = db.query(Visitor).filter(Visitor.id == visitor_id).first()
-    if not v: raise HTTPException(404, "Visitor not found")
-    v.checked_out = True; v.checkout_time = datetime.utcnow(); db.commit()
+def checkout_visitor(
+    visitor_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_guard),
+):
+    visitor = db.query(Visitor).filter(Visitor.id == visitor_id).first()
+    if not visitor:
+        raise HTTPException(status_code=404, detail="Visitor not found")
+    if visitor.checked_out:
+        raise HTTPException(status_code=409, detail="Visitor is already checked out")
+
+    visitor.checked_out = True
+    visitor.checkout_time = datetime.utcnow()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not check out visitor")
     return {"message": "Checked out"}
 
 # ── Alerts ────────────────────────────────────────────────────────────────────
@@ -185,7 +199,7 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db), _=Depends(requir
 
 # ── Entries ───────────────────────────────────────────────────────────────────
 @router.get("/entries")
-def get_entries(user_id: int | None = None, limit: int = 50, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_entries(user_id: int | None = Query(default=None, gt=0), limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db), _=Depends(get_current_user)):
     q = db.query(Entry).order_by(desc(Entry.scanned_at))
     if user_id: q = q.filter(Entry.user_id == user_id)
     entries = q.limit(limit).all()
