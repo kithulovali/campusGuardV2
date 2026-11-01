@@ -6,7 +6,7 @@ from db.session import get_db
 from models import User
 from services.qr_service import flag_expired_qrs, get_qr_expiry_report, regenerate_lost_qr, renew_user_qr
 
-router = APIRouter()
+router = APIRouter(tags=["QR Code Management"])
 
 
 @router.post("/users/{user_id}/report-qr-lost")
