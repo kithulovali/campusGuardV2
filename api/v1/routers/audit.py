@@ -7,7 +7,7 @@ from db.session import get_db
 from models import AuditLog
 
 
-router = APIRouter()
+router = APIRouter(tags=["Administration"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
