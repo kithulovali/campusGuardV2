@@ -2,14 +2,19 @@
 
 Backend-only FastAPI service for campus access control and security monitoring.
 
-## Structure
+## Project structure
 
 ```text
 campusGuardV2/
-├── api/v1/
-│   ├── endpoints/
-│   ├── routers/
-│   └── router.py
+├── api/
+│   └── v1/
+│       ├── routers/
+│       │   ├── auth.py
+│       │   ├── users.py
+│       │   ├── gates.py
+│       │   ├── misc.py
+│       │   └── features.py
+│       └── router.py
 ├── core/
 ├── db/
 ├── models/                 # One SQLAlchemy model per file
@@ -22,6 +27,8 @@ campusGuardV2/
 ├── requirements.txt
 └── seed.py
 ```
+
+All HTTP route modules live in `api/v1/routers/`. The version router in `api/v1/router.py` composes them and `main.py` mounts the versioned API at `/api/v1`. There is no separate `endpoints/` package or duplicate auth/user route implementation.
 
 ## Setup
 
@@ -39,7 +46,7 @@ The application loads the repository-level `.env` with `python-dotenv` before re
 Set `DATABASE_URL` in `.env`:
 
 ```text
-sqlite+libsql://campusguard-kithulovali.aws-us-east-2.turso.io?secure=true&authToken=YOUR_TURSO_AUTH_TOKEN
+sqlite+libsql://YOUR_DATABASE_HOST?secure=true&authToken=YOUR_TURSO_AUTH_TOKEN
 ```
 
 The SQLAlchemy libSQL dialect is provided by `sqlalchemy-libsql`. When `DATABASE_URL` is empty, the application uses the MySQL settings.
