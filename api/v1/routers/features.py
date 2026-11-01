@@ -546,7 +546,7 @@ def download_template(_=Depends(require_admin)):
 # FEATURE 9 — AUDIT LOG
 # ══════════════════════════════════════════════════════════════════════════════
 @router.get("/audit-logs")
-def get_audit_logs(limit: int = 100, db: Session = Depends(get_db), _=Depends(require_admin)):
+def get_audit_logs(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db), _=Depends(require_admin)):
     logs = db.query(AuditLog).order_by(desc(AuditLog.timestamp)).limit(limit).all()
     return [
         {"id": l.id, "actor": l.actor_name, "action": l.action,
