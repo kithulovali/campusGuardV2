@@ -279,6 +279,14 @@ def admit_entry(
     if is_qr_expired(user):
         raise HTTPException(status_code=403, detail="User QR code has expired")
 
+    last_direction = get_last_direction(db, user.id)
+    expected_direction = "out" if last_direction == "in" else "in"
+    if body.direction != expected_direction:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid direction. The next valid direction is '{expected_direction}'.",
+        )
+
     entry = Entry(
         user_id=user.id,
         gate_id=gate.id,
