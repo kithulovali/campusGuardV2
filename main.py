@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
         title="CampusGuard API",
         summary="Campus access control and security management API",
         description=(
-            "**Developed by kithulovali.**\\n\\n"
+            "**Developed by kithulovali.**\n\n"
             "This is the updated version of the original CampusGuard API, "
             "providing authentication, user administration, QR-based access "
             "control, visitor management, alerts, reporting, and campus "
