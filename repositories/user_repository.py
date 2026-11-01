@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from models import User
@@ -16,7 +16,7 @@ class UserRepository:
     def get_by_login(self, identifier: str) -> User | None:
         return self.session.scalar(
             select(User).where(
-                or_(User.email == identifier, User.reg_number == identifier)
+                or_(func.lower(User.email) == identifier.lower(), User.reg_number == identifier)
             )
         )
 
