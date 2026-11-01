@@ -26,7 +26,32 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     logging.getLogger("uvicorn.access").addFilter(PhotoFilter())
-    app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+    app = FastAPI(
+        title="CampusGuard API",
+        summary="Campus access control and security management API",
+        description=(
+            "**Developed by kithulovali.**\\n\\n"
+            "This is the updated version of the original CampusGuard API, "
+            "providing authentication, user administration, QR-based access "
+            "control, visitor management, alerts, reporting, and campus "
+            "monitoring services."
+        ),
+        version=settings.app_version,
+        openapi_tags=[
+            {"name": "Authentication", "description": "Student registration, sign-in, token renewal, and sign-out."},
+            {"name": "Users", "description": "User accounts, profiles, directory search, and administration."},
+            {"name": "Gates & Access Control", "description": "Gate discovery, QR scanning, access decisions, and entry records."},
+            {"name": "Campus Monitoring", "description": "Live campus occupancy and operational dashboard statistics."},
+            {"name": "Visitors", "description": "Visitor registration, pre-registration, check-in, and check-out."},
+            {"name": "Alerts & Incidents", "description": "Security alerts, incident resolution, and automated overstay alerts."},
+            {"name": "QR Code Management", "description": "QR code renewal, lost-code replacement, and expiry monitoring."},
+            {"name": "Photos & Profiles", "description": "User profile photo upload, retrieval, and deletion."},
+            {"name": "Reports & Analytics", "description": "Attendance reports, weekly traffic, and operational statistics."},
+            {"name": "Administration", "description": "Audit history, bulk user imports, lockdown controls, and guard statistics."},
+            {"name": "System", "description": "API service information and health status."},
+        ],
+        lifespan=lifespan,
+    )
     static_dir = Path(__file__).resolve().parent / "static"
     (static_dir / "qr_codes").mkdir(parents=True, exist_ok=True)
     (static_dir / "photos").mkdir(parents=True, exist_ok=True)
