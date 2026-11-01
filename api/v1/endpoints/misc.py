@@ -5,10 +5,10 @@ from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from typing import List
 import io, secrets
-from app.db.session import get_db
-from app.models.models import Visitor, Alert, Entry, User
-from app.schemas.schemas import VisitorCreate, VisitorOut, AlertOut
-from app.core.dependencies import get_current_user, require_guard, require_admin
+from db.session import get_db
+from models import Visitor, Alert, Entry, User
+from schemas.schemas import VisitorCreate, VisitorOut, AlertOut
+from core.dependencies import get_current_user, require_guard, require_admin
 from pydantic import BaseModel
 from typing import Optional
 

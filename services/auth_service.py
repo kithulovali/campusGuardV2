@@ -2,11 +2,11 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
-from app.models.models import RefreshToken
-from app.repositories.refresh_token_repository import RefreshTokenRepository
-from app.repositories.user_repository import UserRepository
+from core.config import settings
+from core.security import create_access_token, create_refresh_token, decode_token, verify_password
+from models import RefreshToken
+from repositories.refresh_token_repository import RefreshTokenRepository
+from repositories.user_repository import UserRepository
 
 
 class AuthService:

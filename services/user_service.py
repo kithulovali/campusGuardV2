@@ -2,10 +2,10 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
-from app.models.models import User
-from app.repositories.user_repository import UserRepository
-from app.utils.qr import generate_qr_hash, generate_qr_image
+from core.security import hash_password
+from models import User
+from repositories.user_repository import UserRepository
+from utils.qr import generate_qr_hash, generate_qr_image
 
 
 class UserService:

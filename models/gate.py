@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
-from app.db.session import Base
+from db.session import Base
 
 class Gate(Base):
     __tablename__ = "gates"

@@ -3,10 +3,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional
 from datetime import datetime, date, timedelta
-from app.db.session import get_db
-from app.models.models import User, Gate, Entry, Alert, SystemState, Visitor
-from app.schemas.schemas import ScanRequest, AdmitRequest
-from app.core.dependencies import get_current_user, require_guard
+from db.session import get_db
+from models import User, Gate, Entry, Alert, SystemState, Visitor
+from schemas.schemas import ScanRequest, AdmitRequest
+from core.dependencies import get_current_user, require_guard
 
 router = APIRouter(prefix="/gates", tags=["gates"])
 

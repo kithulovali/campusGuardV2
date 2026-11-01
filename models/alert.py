@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.db.session import Base
+from db.session import Base
 
 class Alert(Base):
     __tablename__ = "alerts"

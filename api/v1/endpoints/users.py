@@ -2,13 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import os, shutil
-from app.db.session import get_db
-from app.models.models import User
-from app.schemas.schemas import UserCreate, UserUpdate, UserOut, UserPublic
-from app.core.dependencies import require_admin, get_current_user
-from app.core.security import hash_password
-from app.utils.qr import generate_qr_hash, generate_qr_image
-from app.core.config import settings
+from db.session import get_db
+from models import User
+from schemas.schemas import UserCreate, UserUpdate, UserOut, UserPublic
+from core.dependencies import require_admin, get_current_user
+from core.security import hash_password
+from utils.qr import generate_qr_hash, generate_qr_image
+from core.config import settings
 
 router = APIRouter(prefix="/users", tags=["Users"])
 

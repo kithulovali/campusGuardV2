@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.db.session import Base
+from db.session import Base
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

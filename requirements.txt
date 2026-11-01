@@ -13,7 +13,6 @@ qrcode[pil]>=7.4
 Pillow>=10.3
 python-dotenv>=1.0
 pydantic>=2.7,<3.0
-pydantic-settings>=2.2,<3.0
 email-validator>=2.1
 reportlab>=4.1
 openpyxl>=3.1

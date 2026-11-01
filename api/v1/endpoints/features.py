@@ -10,11 +10,11 @@ from datetime import datetime, timedelta, date
 from typing import Optional, List
 from pydantic import BaseModel
 import secrets, json, io, os, shutil
-from app.db.session import get_db
-from app.models.models import User, Gate, Alert, Entry, AuditLog, SystemState, Visitor
-from app.core.dependencies import require_admin, require_guard, get_current_user
-from app.core.security import hash_password
-from app.utils.qr import generate_qr_hash, generate_qr_image
+from db.session import get_db
+from models import User, Gate, Alert, Entry, AuditLog, SystemState, Visitor
+from core.dependencies import require_admin, require_guard, get_current_user
+from core.security import hash_password
+from utils.qr import generate_qr_hash, generate_qr_image
 
 router = APIRouter(tags=["features"])
 

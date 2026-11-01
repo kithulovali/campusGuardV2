@@ -5,10 +5,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1.router import router as api_v1_router
-from app.core.config import settings
-from app.db.session import Base, engine
-from app.models import models  # noqa: F401 - register ORM metadata
+from api.v1.router import router as api_v1_router
+from core.config import settings
+from db.session import Base, engine
+import models  # noqa: F401 - registers every ORM model with SQLAlchemy metadata
 
 
 class PhotoFilter(logging.Filter):
@@ -18,8 +18,6 @@ class PhotoFilter(logging.Filter):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Schema changes belong in Alembic migrations; create_all is retained only
-    # as a development bootstrap for an empty local database.
     if settings.environment.lower() == "development":
         Base.metadata.create_all(bind=engine)
     yield
@@ -28,8 +26,7 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     logging.getLogger("uvicorn.access").addFilter(PhotoFilter())
-    app = FastAPI(title=settings.app_name, version=settings.app_version,
-                  lifespan=lifespan)
+    app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
     static_dir = Path("static")
     (static_dir / "qr_codes").mkdir(parents=True, exist_ok=True)
     (static_dir / "photos").mkdir(parents=True, exist_ok=True)
@@ -38,8 +35,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", tags=["System"])
     def root():
-        return {"status": "ok", "service": settings.app_name,
-                "version": settings.app_version, "docs": "/docs"}
+        return {"status": "ok", "service": settings.app_name, "version": settings.app_version, "docs": "/docs"}
 
     @app.get("/health", tags=["System"])
     def health():

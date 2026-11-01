@@ -1,40 +1,29 @@
 # CampusGuard Backend
 
-Backend-only FastAPI service for campus access control and security monitoring. The frontend is intentionally excluded from this branch.
+Backend-only FastAPI service for campus access control and security monitoring.
 
-## Stack
-
-- FastAPI and Pydantic v2
-- SQLAlchemy 2.x
-- SQLite through Turso/libSQL, or MySQL through PyMySQL
-- Alembic for schema migrations
-- Repository, service, and router layers
-- JWT access and refresh tokens
-
-## Project structure
+## Structure
 
 ```text
 campusGuardV2/
-├── app/
-│   ├── api/v1/
-│   │   ├── endpoints/    # Existing feature endpoints
-│   │   └── routers/      # Refactored auth and user routers
-│   ├── core/
-│   ├── db/
-│   ├── models/
-│   ├── repositories/
-│   ├── schemas/
-│   ├── services/
-│   └── utils/
+├── api/v1/
+│   ├── endpoints/
+│   ├── routers/
+│   └── router.py
+├── core/
+├── db/
+├── models/                 # One SQLAlchemy model per file
+├── repositories/
+├── schemas/
+├── services/
+├── utils/
 ├── .env.example
 ├── main.py
 ├── requirements.txt
 └── seed.py
 ```
 
-## Configure Turso
-
-Install dependencies and copy the environment template:
+## Setup
 
 ```bash
 python -m venv .venv
@@ -43,13 +32,17 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `DATABASE_URL` in `.env` to the SQLAlchemy libSQL dialect URL. For the database host supplied for this project, the format is:
+The application loads the repository-level `.env` with `python-dotenv` before reading configuration. Set a random `SECRET_KEY` of at least 32 characters and provide either a Turso URL or the MySQL connection variables. Never commit `.env` or real credentials.
+
+## Turso / libSQL
+
+Set `DATABASE_URL` in `.env`:
 
 ```text
 sqlite+libsql://campusguard-kithulovali.aws-us-east-2.turso.io?secure=true&authToken=YOUR_TURSO_AUTH_TOKEN
 ```
 
-Generate a database authentication token in the Turso dashboard/CLI and replace the placeholder locally. Do not commit the token or the real `.env` file. The dependency `sqlalchemy-libsql` provides the SQLAlchemy dialect and its libSQL client dependency. The application already reads `DATABASE_URL`; if it is unset, it falls back to the MySQL settings.
+The SQLAlchemy libSQL dialect is provided by `sqlalchemy-libsql`. When `DATABASE_URL` is empty, the application uses the MySQL settings.
 
 ## Run
 
@@ -57,12 +50,6 @@ Generate a database authentication token in the Turso dashboard/CLI and replace 
 uvicorn main:app --reload --port 8000
 ```
 
-API documentation: `http://localhost:8000/docs`. API routes are prefixed with `/api/v1`.
+API documentation: `/docs`; API prefix: `/api/v1`.
 
-## Database migrations
-
-Use Alembic for schema changes. `Base.metadata.create_all()` is retained only as a development bootstrap for a new local database; it does not upgrade an existing Turso database. Apply reviewed migrations before deploying schema changes.
-
-## Scope
-
-This branch contains the backend only. The React frontend directory has been removed from this branch; the original `main` branch remains unchanged. Some legacy gate, visitor, and reporting feature endpoints still require migration into the repository/service/router pattern and automated integration testing before production readiness.
+Use Alembic migrations for existing databases. Development `create_all()` only bootstraps missing tables; it does not alter existing Turso schemas.

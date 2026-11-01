@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.models.models import User, RefreshToken
-from app.schemas.schemas import LoginRequest, TokenResponse, RefreshRequest
-from app.core.security import verify_password, create_access_token, create_refresh_token, decode_token
+from db.session import get_db
+from models import User, RefreshToken
+from schemas.schemas import LoginRequest, TokenResponse, RefreshRequest
+from core.security import verify_password, create_access_token, create_refresh_token, decode_token
 from datetime import datetime, timedelta
-from app.core.config import settings
+from core.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,7 +25,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
     rt = RefreshToken(
         user_id=user.id, token=refresh,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at=datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
     )
     db.add(rt); db.commit()
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.db.session import Base
+from db.session import Base
 
 class SystemState(Base):
     __tablename__ = "system_state"

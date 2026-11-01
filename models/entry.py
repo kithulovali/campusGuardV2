@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import DateTime, Enum, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.session import Base
+from db.session import Base
 
 class Entry(Base):
     __tablename__ = "entries"

@@ -1,7 +1,7 @@
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.models import User
+from models import User
 
 
 class UserRepository:

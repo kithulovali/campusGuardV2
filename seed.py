@@ -1,7 +1,7 @@
-from app.db.session import SessionLocal, Base, engine
-from app.models.models import User, Gate, SystemState
-from app.core.security import hash_password
-from app.utils.qr import generate_qr_hash, generate_qr_image
+from db.session import SessionLocal, Base, engine
+from models import User, Gate, SystemState
+from core.security import hash_password
+from utils.qr import generate_qr_hash, generate_qr_image
 from datetime import datetime, timedelta
 
 Base.metadata.create_all(bind=engine)
