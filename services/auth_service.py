@@ -1,12 +1,22 @@
 from datetime import datetime, timedelta
+from pathlib import Path
+
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from core.security import create_access_token, create_refresh_token, decode_token, verify_password
-from models import RefreshToken
+from core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    verify_password,
+)
+from models import RefreshToken, User
 from repositories.refresh_token_repository import RefreshTokenRepository
 from repositories.user_repository import UserRepository
+from utils.qr import generate_qr_hash, generate_qr_image
 
 
 class AuthService:
@@ -14,6 +24,52 @@ class AuthService:
         self.session = session
         self.users = UserRepository(session)
         self.refresh_tokens = RefreshTokenRepository(session)
+
+    def register(self, *, full_name: str, email: str, reg_number: str, password: str) -> dict:
+        normalized_email = email.strip().lower()
+        normalized_reg_number = reg_number.strip()
+        if self.users.get_by_email(normalized_email):
+            raise HTTPException(status_code=409, detail="Email already registered")
+        if self.users.get_by_registration_number(normalized_reg_number):
+            raise HTTPException(status_code=409, detail="Registration number already registered")
+
+        qr_code = generate_qr_hash(normalized_reg_number)
+        qr_path: str | None = None
+        try:
+            user = User(
+                full_name=full_name.strip(),
+                email=normalized_email,
+                reg_number=normalized_reg_number,
+                role="student",
+                password=hash_password(password),
+                qr_code=qr_code,
+                qr_expires=datetime.utcnow() + timedelta(days=180),
+                status="active",
+            )
+            self.session.add(user)
+            self.session.flush()
+            qr_path = generate_qr_image(qr_code, user.full_name)
+
+            access = create_access_token({"sub": str(user.id), "role": user.role})
+            refresh = create_refresh_token({"sub": str(user.id)})
+            self.refresh_tokens.add(RefreshToken(
+                user_id=user.id,
+                token=refresh,
+                expires_at=datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days),
+            ))
+            self.session.commit()
+            self.session.refresh(user)
+            return {"access_token": access, "refresh_token": refresh, "user": user}
+        except IntegrityError as exc:
+            self.session.rollback()
+            if qr_path:
+                Path(qr_path).unlink(missing_ok=True)
+            raise HTTPException(status_code=409, detail="Email or registration number already registered") from exc
+        except Exception:
+            self.session.rollback()
+            if qr_path:
+                Path(qr_path).unlink(missing_ok=True)
+            raise
 
     def login(self, username: str, password: str) -> dict:
         user = self.users.get_by_login(username.strip())
