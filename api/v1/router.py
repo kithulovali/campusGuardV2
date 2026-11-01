@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 
-from api.v1.routers import auth, users
-from api.v1.endpoints import gates, misc, features
+from api.v1.routers import auth, features, gates, misc, users
 
 router = APIRouter()
+
 router.include_router(auth.router)
 router.include_router(users.router)
 router.include_router(gates.router)
