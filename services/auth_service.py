@@ -28,6 +28,9 @@ class AuthService:
     def register(self, *, full_name: str, email: str, reg_number: str, password: str) -> dict:
         normalized_email = email.strip().lower()
         normalized_reg_number = reg_number.strip()
+        normalized_name = full_name.strip()
+        if not normalized_name or not normalized_reg_number:
+            raise HTTPException(status_code=422, detail="Name and registration number are required")
         if self.users.get_by_email(normalized_email):
             raise HTTPException(status_code=409, detail="Email already registered")
         if self.users.get_by_registration_number(normalized_reg_number):
@@ -37,7 +40,7 @@ class AuthService:
         qr_path: str | None = None
         try:
             user = User(
-                full_name=full_name.strip(),
+                full_name=normalized_name,
                 email=normalized_email,
                 reg_number=normalized_reg_number,
                 role="student",
