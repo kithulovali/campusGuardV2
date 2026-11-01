@@ -159,7 +159,7 @@ def list_alerts(db: Session = Depends(get_db), _=Depends(require_guard)):
 def create_alert(
     body: AlertCreate,
     db: Session = Depends(get_db),
-    guard: User = Depends(require_guard),
+    _: User = Depends(require_guard),
 ):
     if body.gate_id is not None:
         gate = db.query(Gate).filter(Gate.id == body.gate_id).first()
@@ -170,7 +170,6 @@ def create_alert(
         type=body.type,
         gate_id=body.gate_id,
         description=body.description,
-        user_id=guard.id if body.type == "manual" else None,
     )
     try:
         db.add(alert)
