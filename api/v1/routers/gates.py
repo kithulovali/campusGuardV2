@@ -1,5 +1,4 @@
-from datetime import date, datetime
-from typing import Optional
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func
@@ -7,97 +6,20 @@ from sqlalchemy.orm import Session, joinedload
 
 from core.dependencies import get_current_user, require_guard
 from db.session import get_db
-from models import Alert, Entry, Gate, SystemState, User, Visitor
+from models import Alert, Entry, Gate, User
 from schemas.schemas import AdmitRequest, ScanRequest
+from services.gate_service import check_visitor_overstays, find_active_gate, get_last_direction, is_locked_down, is_qr_expired, log_denied_scan
 
 router = APIRouter(prefix="/gates", tags=["Gates"])
 
 
-def is_locked_down(db: Session) -> bool:
-    state = db.query(SystemState).filter(SystemState.key == "lockdown").first()
-    return bool(state and state.value == "true")
-
-
-def is_qr_expired(user: User) -> bool:
-    return bool(user.qr_expires and user.qr_expires < datetime.utcnow())
-
-
-def get_last_direction(db: Session, user_id: int) -> Optional[str]:
-    today = date.today()
-    last_entry = (
-        db.query(Entry)
-        .filter(
-            Entry.user_id == user_id,
-            func.date(Entry.scanned_at) == today,
-        )
-        .order_by(desc(Entry.scanned_at), desc(Entry.id))
-        .first()
-    )
-    return last_entry.direction if last_entry else None
-
-
-def check_visitor_overstays(db: Session) -> None:
-    """Create at most one overstay alert per visitor per day."""
-    now = datetime.utcnow()
-    visitors = (
-        db.query(Visitor)
-        .filter(
-            Visitor.checked_out.is_(False),
-            Visitor.expected_exit.is_not(None),
-            Visitor.expected_exit < now,
-        )
-        .all()
-    )
-    today = date.today()
-    for visitor in visitors:
-        already_alerted = (
-            db.query(Alert.id)
-            .filter(
-                Alert.type == "overstay",
-                Alert.description.like(f"%Visitor '{visitor.name}'%"),
-                func.date(Alert.timestamp) == today,
-            )
-            .first()
-        )
-        if not already_alerted:
-            db.add(
-                Alert(
-                    type="overstay",
-                    description=(
-                        f"Visitor '{visitor.name}' has overstayed. "
-                        f"Expected exit: {visitor.expected_exit:%I:%M %p}. "
-                        f"Host: {visitor.host or 'N/A'}."
-                    ),
-                )
-            )
-
-
 def get_active_gate(db: Session, gate_id: int) -> Gate:
-    gate = db.query(Gate).filter(Gate.id == gate_id).first()
-    if not gate or not gate.active:
+    gate = find_active_gate(db, gate_id)
+    if gate is None:
         raise HTTPException(status_code=404, detail="Gate not found or inactive")
     if gate.locked:
         raise HTTPException(status_code=403, detail="This gate is locked")
     return gate
-
-
-def log_denied_scan(
-    db: Session,
-    *,
-    gate_id: int,
-    message: str,
-    user_id: int | None = None,
-    alert_type: str = "invalid_qr",
-) -> None:
-    db.add(
-        Alert(
-            gate_id=gate_id,
-            user_id=user_id,
-            type=alert_type,
-            description=message,
-        )
-    )
-    db.commit()
 
 
 @router.get("")
