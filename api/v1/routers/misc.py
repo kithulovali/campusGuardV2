@@ -3,11 +3,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
-from typing import List, Literal
+from typing import Literal
 import io, secrets
 from db.session import get_db
 from models import Visitor, Alert, Entry, Gate, User
-from schemas.schemas import VisitorCreate, VisitorOut, AlertOut
+from schemas.schemas import VisitorCreate
 from core.dependencies import get_current_user, require_guard, require_admin
 from pydantic import BaseModel, Field
 from typing import Optional
