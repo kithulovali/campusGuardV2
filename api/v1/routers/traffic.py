@@ -5,7 +5,7 @@ from core.dependencies import get_current_user
 from db.session import get_db
 from services.dashboard_service import get_weekly_traffic
 
-router = APIRouter()
+router = APIRouter(tags=["Reports & Analytics"])
 
 
 @router.get("/reports/weekly")
