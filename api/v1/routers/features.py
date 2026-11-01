@@ -245,9 +245,18 @@ def pre_register_visitor(body: PreRegRequest, db: Session = Depends(get_db), hos
         expected_exit=expected_dt,
         checked_out=False,
     )
-    db.add(visitor); db.commit(); db.refresh(visitor)
-    audit(db, host, "visitor.pre_register", "visitor", visitor.id,
-          {"name": body.visitor_name, "date": body.expected_date})
+    db.add(visitor)
+    db.flush()
+    audit(
+        db,
+        host,
+        "visitor.pre_register",
+        "visitor",
+        visitor.id,
+        {"name": body.visitor_name, "date": body.expected_date},
+    )
+    db.commit()
+    db.refresh(visitor)
 
     return {
         "visitor_id": visitor.id,
