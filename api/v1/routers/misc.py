@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from typing import List
@@ -17,33 +17,32 @@ router = APIRouter(tags=["misc"])
 # ── Who is on campus ──────────────────────────────────────────────────────────
 @router.get("/campus/live")
 def campus_live(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    """Returns list of users currently on campus (entered but not yet exited today)."""
+    """Return each user whose latest entry today is an entry onto campus."""
     today = datetime.utcnow().date()
-    # Get all entries today
-    entries = db.query(Entry).filter(
-        func.date(Entry.scanned_at) == today
-    ).order_by(Entry.scanned_at).all()
+    entries = (
+        db.query(Entry)
+        .options(joinedload(Entry.user))
+        .filter(func.date(Entry.scanned_at) == today)
+        .order_by(Entry.scanned_at, Entry.id)
+        .all()
+    )
 
-    # Track who is inside: increment on 'in', decrement on 'out'
-    status = {}  # user_id -> latest entry record
-    for e in entries:
-        if e.direction == 'in':
-            status[e.user_id] = e
-        elif e.direction == 'out' and e.user_id in status:
-            del status[e.user_id]
+    latest_by_user = {}
+    for entry in entries:
+        latest_by_user[entry.user_id] = entry
 
-    result = []
-    for user_id, entry in status.items():
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            result.append({
-                "id": user.id,
-                "full_name": user.full_name,
-                "role": user.role,
-                "reg_number": user.reg_number,
-                "entry_time": entry.scanned_at.strftime("%I:%M %p") if entry.scanned_at else "",
-            })
-    return result
+    return [
+        {
+            "id": entry.user.id,
+            "full_name": entry.user.full_name,
+            "role": entry.user.role,
+            "reg_number": entry.user.reg_number,
+            "entry_time": entry.scanned_at.strftime("%I:%M %p") if entry.scanned_at else "",
+        }
+        for entry in latest_by_user.values()
+        if entry.direction == "in" and entry.user is not None
+    ]
+
 
 # ── Visitors ──────────────────────────────────────────────────────────────────
 @router.get("/visitors")
