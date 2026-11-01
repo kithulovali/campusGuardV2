@@ -5,7 +5,7 @@ from core.dependencies import require_admin
 from db.session import get_db
 from services.dashboard_service import get_guard_statistics
 
-router = APIRouter()
+router = APIRouter(tags=["Administration"])
 
 
 @router.get("/stats/guards")
