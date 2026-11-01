@@ -37,7 +37,7 @@ jobs:
           python - <<'PY'
           from main import app
 
-          registered_paths = {route.path for route in app.routes}
+          registered_paths = set(app.openapi()["paths"])
           required_paths = {
               "/api/v1/auth/login",
               "/api/v1/users",
