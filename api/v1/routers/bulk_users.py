@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 import hashlib
 import io
-import json
 import os
 import secrets
 import uuid
@@ -19,24 +18,13 @@ from sqlalchemy.orm import Session
 from core.dependencies import get_current_user, require_admin, require_guard
 from core.security import hash_password
 from db.session import get_db
-from models import Alert, AuditLog, Entry, Gate, SystemState, User, Visitor
+from models import Alert, Entry, Gate, SystemState, User, Visitor
 from utils.qr import QR_DIR, generate_qr_hash, generate_qr_image
+from services.audit_service import record_audit
 
 
 router = APIRouter()
 
-
-# ── Audit helper ──────────────────────────────────────────────────────────────
-def audit(db, actor, action, target_type=None, target_id=None, detail=None):
-    log = AuditLog(
-        actor_id=actor.id if actor else None,
-        actor_name=actor.full_name if actor else "System",
-        action=action,
-        target_type=target_type,
-        target_id=target_id,
-        detail=json.dumps(detail) if detail else None,
-    )
-    db.add(log)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FEATURE 8 — BULK USER IMPORT
