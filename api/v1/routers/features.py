@@ -116,7 +116,7 @@ async def upload_photo(
             filename = f"user-{user.id}-{uuid.uuid4().hex}.jpg"
             destination = PHOTO_DIR / filename
             image.save(destination, format="JPEG", quality=88, optimize=True)
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (UnidentifiedImageError, OSError, ValueError, PILImage.DecompressionBombError):
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
 
     previous_photo = user.photo
@@ -532,8 +532,8 @@ def download_template(_=Depends(require_admin)):
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Users"
     headers = ["full_name","email","reg_number","role","password"]
     ws.append(headers)
-    ws.append(["Amara Diallo","amara@bugema.ac.ug","23/BIT/BU/R/0001","student","changeme123"])
-    ws.append(["Kevin Otieno","kotieno@bugema.ac.ug","LEC/2024/001","lecturer","changeme123"])
+    ws.append(["Amara Diallo","amara@bugema.ac.ug","23/BIT/BU/R/0001","student",""])
+    ws.append(["Kevin Otieno","kotieno@bugema.ac.ug","LEC/2024/001","lecturer",""])
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return StreamingResponse(buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
