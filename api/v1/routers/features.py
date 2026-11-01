@@ -208,9 +208,6 @@ def delete_photo(
     return {"message": "Photo deleted"}
 
 
-eted"}
-
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FEATURE 4 — QR COMPROMISE / LOST CARD
