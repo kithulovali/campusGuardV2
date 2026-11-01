@@ -5,7 +5,7 @@ from core.dependencies import require_guard
 from db.session import get_db
 from services.overstay_service import check_overstay_status, create_missing_overstay_alerts, find_overstaying_visitors
 
-router = APIRouter()
+router = APIRouter(tags=["Alerts & Incidents"])
 
 
 @router.get("/visitors/check-overstay")
