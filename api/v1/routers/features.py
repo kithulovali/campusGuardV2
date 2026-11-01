@@ -229,8 +229,9 @@ def report_qr_lost(user_id: int, db: Session = Depends(get_db), current=Depends(
     user.qr_code = new_hash
 
     # Remove old QR image
-    old_path = f"static/qr_codes/{old_qr}.png"
-    if os.path.exists(old_path): os.remove(old_path)
+    old_path = QR_DIR / f"{old_qr}.png" if old_qr else None
+    if old_path and old_path.exists():
+        old_path.unlink()
     generate_qr_image(new_hash, user.full_name)
 
     alert = Alert(user_id=user.id, type="qr_compromised",
