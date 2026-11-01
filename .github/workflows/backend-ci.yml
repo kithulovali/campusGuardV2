@@ -33,7 +33,7 @@ jobs:
           python -m compileall -q api core db models repositories schemas services utils main.py seed.py
 
       - name: Run service tests
-        run: pytest -q
+        run: python -m pytest -q
 
       - name: Import application and verify API routes
         run: |
