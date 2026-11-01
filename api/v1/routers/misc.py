@@ -16,7 +16,7 @@ router = APIRouter(tags=["misc"])
 
 # ── Who is on campus ──────────────────────────────────────────────────────────
 @router.get("/campus/live")
-def campus_live(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def campus_live(db: Session = Depends(get_db), _=Depends(require_guard)):
     """Return each user whose latest entry today is an entry onto campus."""
     today = datetime.utcnow().date()
     entries = (
@@ -199,7 +199,7 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db), _=Depends(requir
 
 # ── Entries ───────────────────────────────────────────────────────────────────
 @router.get("/entries")
-def get_entries(user_id: int | None = Query(default=None, gt=0), limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_entries(user_id: int | None = Query(default=None, gt=0), limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db), _=Depends(require_guard)):
     q = db.query(Entry).order_by(desc(Entry.scanned_at))
     if user_id: q = q.filter(Entry.user_id == user_id)
     entries = q.limit(limit).all()
@@ -218,7 +218,7 @@ def get_entries(user_id: int | None = Query(default=None, gt=0), limit: int = Qu
 
 # ── Dashboard stats ───────────────────────────────────────────────────────────
 @router.get("/dashboard/stats")
-def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def stats(db: Session = Depends(get_db), _=Depends(require_guard)):
     today = datetime.utcnow().date()
     total_users = db.query(func.count(User.id)).scalar() or 0
     latest_entries = (
@@ -274,7 +274,7 @@ def generate_report(
         start = datetime.combine(today - timedelta(days=180), datetime.min.time())
         end   = datetime.utcnow()
 
-    entries = db.query(Entry).filter(Entry.scanned_at.between(start, end)).order_by(desc(Entry.scanned_at)).all()
+    entries = (\n        db.query(Entry)\n        .filter(Entry.scanned_at.between(start, end))\n        .order_by(desc(Entry.scanned_at))\n        .limit(5000)\n        .all()\n    )
 
     if format == "pdf":
         from reportlab.lib.pagesizes import A4
@@ -372,7 +372,7 @@ def check_overstay(db: Session = Depends(get_db), _=Depends(require_guard)):
 
 
 @router.post("/alerts/check-auto")
-def auto_check_alerts(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def auto_check_alerts(db: Session = Depends(get_db), _=Depends(require_guard)):
     """
     Call this periodically from the frontend (every 2 min) to auto-generate
     visitor overstay alerts without needing a gate scan to trigger them.
