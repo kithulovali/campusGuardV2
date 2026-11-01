@@ -10,7 +10,7 @@ from db.session import get_db
 from models.user import User
 from services.visitor_service import confirm_visitor_checkin, get_preregistered_visitor, pre_register_visitor
 
-router = APIRouter()
+router = APIRouter(tags=["Visitors"])
 
 
 class PreRegRequest(BaseModel):
