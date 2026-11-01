@@ -27,7 +27,7 @@ async def lifespan(_: FastAPI):
 def create_app() -> FastAPI:
     logging.getLogger("uvicorn.access").addFilter(PhotoFilter())
     app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
-    static_dir = Path("static")
+    static_dir = Path(__file__).resolve().parent / "static"
     (static_dir / "qr_codes").mkdir(parents=True, exist_ok=True)
     (static_dir / "photos").mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
