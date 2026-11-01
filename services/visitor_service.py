@@ -8,6 +8,10 @@ from models.user import User
 from services.audit_service import record_audit
 
 
+def list_visitors(db: Session, limit: int = 100) -> list[Visitor]:
+    return db.query(Visitor).order_by(Visitor.time_in.desc()).limit(limit).all()
+
+
 def register_visitor(db: Session, *, name: str, id_number: str | None, phone: str | None, reason: str, host: str, expected_exit: datetime | None) -> Visitor:
     visitor = Visitor(
         name=name,
