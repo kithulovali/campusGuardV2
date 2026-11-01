@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
@@ -129,7 +129,7 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db), _=Depends(requir
 
 # ── Entries ───────────────────────────────────────────────────────────────────
 @router.get("/entries")
-def get_entries(user_id: int = None, limit: int = 50, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_entries(user_id: int | None = None, limit: int = 50, db: Session = Depends(get_db), _=Depends(get_current_user)):
     q = db.query(Entry).order_by(desc(Entry.scanned_at))
     if user_id: q = q.filter(Entry.user_id == user_id)
     entries = q.limit(limit).all()
@@ -155,12 +155,12 @@ def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
     outs  = db.query(func.count(Entry.id)).filter(func.date(Entry.scanned_at)==today, Entry.direction=="out").scalar()
     alerts= db.query(func.count(Alert.id)).filter(func.date(Alert.timestamp)==today, Alert.resolved==False).scalar()
     vis   = db.query(func.count(Visitor.id)).filter(func.date(Visitor.time_in)==today).scalar()
-    return {"total_users": total_users, "on_campus": max(0, ins - outs), "alerts_today": alerts, "visitors_today": vis}
+    return {"total_users": total_users, "on_campus": sum(1 for direction in latest_by_user.values() if direction == "in"), "alerts_today": alerts, "visitors_today": vis}
 
 # ── Reports ───────────────────────────────────────────────────────────────────
 @router.get("/reports/generate")
 def generate_report(
-    type: str = "daily", format: str = "pdf",
+    type: str = Query(default="daily", pattern="^(daily|monthly|six_months)$"),\n    format: str = Query(default="pdf", pattern="^(pdf|xlsx)$"),
     db: Session = Depends(get_db), _=Depends(require_admin)
 ):
     today = datetime.utcnow().date()
