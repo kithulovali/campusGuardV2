@@ -225,7 +225,7 @@ def report_qr_lost(user_id: int, db: Session = Depends(get_db), current=Depends(
     if not user: raise HTTPException(404, "User not found")
 
     old_qr   = user.qr_code
-    new_hash = generate_qr_hash(user.reg_number + secrets.token_hex(4))
+    new_hash = generate_qr_hash((user.reg_number or str(user.id)) + secrets.token_hex(4))
     user.qr_code = new_hash
 
     # Remove old QR image
@@ -271,12 +271,13 @@ def guard_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
 # FEATURE 7 — VISITOR PRE-REGISTRATION
 # ══════════════════════════════════════════════════════════════════════════════
 class PreRegRequest(BaseModel):
-    visitor_name:  str
+    visitor_name: str = Field(min_length=2, max_length=120)
     visitor_email: Optional[str] = None
-    visitor_phone: Optional[str] = None
-    reason:        str
-    expected_date: str   # YYYY-MM-DD
-    expected_time: str   # HH:MM
+    visitor_phone: Optional[str] = Field(default=None, max_length=30)
+    reason: str = Field(min_length=2, max_length=500)
+    expected_date: str = Field(pattern=r"^\\d{4}-\\d{2}-\\d{2}$")
+    expected_time: str = Field(pattern=r"^\\d{2}:\\d{2}$")
+
 
 @router.post("/visitors/pre-register")
 def pre_register_visitor(
@@ -357,55 +358,158 @@ def confirm_visitor_checkin(token: str, db: Session = Depends(get_db), guard=Dep
 # FEATURE 8 — BULK USER IMPORT
 # ══════════════════════════════════════════════════════════════════════════════
 @router.post("/users/bulk-import")
-async def bulk_import(file: UploadFile = File(...),
-                      db: Session = Depends(get_db), admin=Depends(require_admin)):
-    import openpyxl, io as _io
-    content = await file.read()
-    wb = openpyxl.load_workbook(_io.BytesIO(content))
-    ws = wb.active
+async def bulk_import(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    import openpyxl
+    from openpyxl.utils.exceptions import InvalidFileException
 
-    created = []; skipped = []; errors = []
-    # Auto-detect header row (scan first 10 rows for required columns)
+    max_upload_bytes = 10 * 1024 * 1024
+    content_bytes = await file.read(max_upload_bytes + 1)
+    await file.close()
+    if len(content_bytes) > max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Workbook must not exceed 10 MB")
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="Workbook is empty")
+
+    try:
+        workbook = openpyxl.load_workbook(
+            BytesIO(content_bytes),
+            read_only=True,
+            data_only=True,
+        )
+    except (InvalidFileException, OSError, ValueError):
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid Excel workbook")
+
+    worksheet = workbook.active
     required = {"full_name", "email", "reg_number", "role", "password"}
-    header_row_idx = None
-    headers = []
-    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10), start=1):
-        candidate = [str(c.value).strip().lower() if c.value else "" for c in row]
+    headers = None
+    header_row_index = None
+
+    for row_index, row in enumerate(
+        worksheet.iter_rows(min_row=1, max_row=10, values_only=True),
+        start=1,
+    ):
+        candidate = [
+            str(value).strip().lower() if value is not None else ""
+            for value in row
+        ]
         if required.issubset(set(candidate)):
-            header_row_idx = row_idx
             headers = candidate
+            header_row_index = row_index
             break
 
-    if header_row_idx is None:
-        raise HTTPException(400, f"Missing columns. Required: {', '.join(required)}. Headers must be in one of the first 10 rows.")
+    if headers is None or header_row_index is None:
+        workbook.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {', '.join(sorted(required))}",
+        )
 
-    for row in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
-        if not any(row): continue
-        data = {headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)}
-        if not data.get("full_name") or not data.get("reg_number"):
-            skipped.append(data.get("reg_number", "unknown")); continue
-        if db.query(User).filter(User.reg_number == data["reg_number"]).first():
-            skipped.append(data["reg_number"]); continue
-        if db.query(User).filter(User.email == data["email"]).first():
-            skipped.append(data["reg_number"]); continue
-        try:
-            qr = generate_qr_hash(data["reg_number"])
-            expiry = datetime.utcnow() + timedelta(days=180)  # 6-month QR validity
-            u = User(full_name=data["full_name"], email=data["email"],
-                     reg_number=data["reg_number"],
-                     role=data.get("role","student").lower(),
-                     password=hash_password(data.get("password","changeme123")),
-                     qr_code=qr, qr_expires=expiry)
-            db.add(u); db.flush()
-            generate_qr_image(qr, data["full_name"])
-            created.append(data["reg_number"])
-        except Exception as e:
-            errors.append({"reg": data.get("reg_number"), "error": str(e)})
+    created = []
+    skipped = []
+    errors = []
+    generated_qr_files = []
+    allowed_roles = {"admin", "guard", "student", "staff", "lecturer"}
 
-    db.commit()
-    audit(db, admin, "users.bulk_import", detail={"created": len(created), "skipped": len(skipped)})
-    return {"created": len(created), "skipped": len(skipped), "errors": errors,
-            "created_list": created[:20]}
+    try:
+        for row in worksheet.iter_rows(
+            min_row=header_row_index + 1,
+            values_only=True,
+        ):
+            if not any(value is not None for value in row):
+                continue
+
+            data = {
+                headers[index]: str(value).strip() if value is not None else ""
+                for index, value in enumerate(row)
+                if index < len(headers)
+            }
+            registration_number = data.get("reg_number", "")
+            email = data.get("email", "").lower()
+            role = data.get("role", "").lower()
+            password = data.get("password", "")
+
+            if not all(
+                (
+                    data.get("full_name"),
+                    registration_number,
+                    email,
+                    password,
+                )
+            ):
+                skipped.append(registration_number or "unknown")
+                continue
+            if role not in allowed_roles:
+                errors.append({
+                    "reg": registration_number,
+                    "error": "Unsupported role",
+                })
+                continue
+            if len(password) < 10 or len(password) > 128:
+                errors.append({
+                    "reg": registration_number,
+                    "error": "Password must contain 10 to 128 characters",
+                })
+                continue
+            if db.query(User.id).filter(
+                (User.reg_number == registration_number) | (User.email == email)
+            ).first():
+                skipped.append(registration_number)
+                continue
+
+            qr_code = generate_qr_hash(registration_number)
+            qr_path = None
+            try:
+                with db.begin_nested():
+                    user = User(
+                        full_name=data["full_name"][:120],
+                        email=email,
+                        reg_number=registration_number[:60],
+                        role=role,
+                        password=hash_password(password),
+                        qr_code=qr_code,
+                        qr_expires=datetime.utcnow() + timedelta(days=180),
+                    )
+                    db.add(user)
+                    db.flush()
+                    qr_path = generate_qr_image(qr_code, user.full_name)
+                if qr_path:
+                    generated_qr_files.append(qr_path)
+                created.append(registration_number)
+            except Exception:
+                if qr_path and os.path.exists(qr_path):
+                    os.remove(qr_path)
+                errors.append({
+                    "reg": registration_number,
+                    "error": "Could not create this user record",
+                })
+
+        audit(
+            db,
+            admin,
+            "users.bulk_import",
+            detail={"created": len(created), "skipped": len(skipped), "errors": len(errors)},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        for qr_path in generated_qr_files:
+            if os.path.exists(qr_path):
+                os.remove(qr_path)
+        raise HTTPException(status_code=500, detail="Bulk import could not be completed")
+    finally:
+        workbook.close()
+
+    return {
+        "created": len(created),
+        "skipped": len(skipped),
+        "errors": errors[:50],
+        "created_list": created[:20],
+    }
+
 
 @router.get("/users/bulk-template")
 def download_template(_=Depends(require_admin)):
