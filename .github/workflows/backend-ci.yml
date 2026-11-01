@@ -1,0 +1,57 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: campusguard-ci-secret-key-at-least-32-characters
+      DATABASE_URL: sqlite:///./campusguard_ci.db
+      ENVIRONMENT: test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile backend modules
+        run: |
+          python -m compileall -q api core db models repositories schemas services utils main.py seed.py
+
+      - name: Import application and verify API routes
+        run: |
+          python - <<'PY'
+          from main import app
+
+          registered_paths = {route.path for route in app.routes}
+          required_paths = {
+              "/api/v1/auth/login",
+              "/api/v1/users",
+              "/api/v1/users/expired-qr",
+              "/api/v1/users/bulk-import",
+              "/api/v1/gates/scan",
+              "/api/v1/gates/admit",
+              "/api/v1/visitors",
+              "/api/v1/alerts",
+              "/api/v1/reports/generate",
+          }
+          missing = required_paths - registered_paths
+          if missing:
+              raise SystemExit(f"Missing API routes: {sorted(missing)}")
+
+          print(f"Application imported successfully; verified {len(required_paths)} required routes.")
+          PY
