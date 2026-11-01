@@ -1,5 +1,4 @@
-import hashlib
-from datetime import datetime
+import secrets
 from pathlib import Path
 
 import qrcode
@@ -8,9 +7,14 @@ import qrcode
 QR_DIR = Path(__file__).resolve().parents[1] / "static" / "qr_codes"
 
 
-def generate_qr_hash(reg_number: str) -> str:
-    raw = f"{reg_number}-{datetime.utcnow().isoformat()}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+def generate_qr_hash(reg_number: str | None = None) -> str:
+    """Generate an unpredictable QR bearer token.
+
+    The registration number is accepted for backwards-compatible callers but
+    is deliberately not used as entropy because registration numbers are
+    guessable identifiers.
+    """
+    return secrets.token_urlsafe(32)
 
 
 def generate_qr_image(qr_hash: str, user_name: str) -> str:
