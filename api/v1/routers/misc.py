@@ -3,13 +3,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Literal
 import io, secrets
 from db.session import get_db
 from models import Visitor, Alert, Entry, User
 from schemas.schemas import VisitorCreate, VisitorOut, AlertOut
 from core.dependencies import get_current_user, require_guard, require_admin
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 router = APIRouter(tags=["misc"])
@@ -60,27 +60,50 @@ def list_visitors(db: Session = Depends(get_db), _=Depends(require_guard)):
     ]
 
 @router.post("/visitors")
-def create_visitor(body: VisitorCreate, db: Session = Depends(get_db), _=Depends(require_guard)):
+def create_visitor(
+    body: VisitorCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_guard),
+):
     expected = None
     if body.expected_exit:
         try:
-            t = datetime.strptime(body.expected_exit, "%H:%M").time()
-            expected = datetime.combine(datetime.utcnow().date(), t)
-        except: pass
+            expected_time = datetime.strptime(body.expected_exit, "%H:%M").time()
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="expected_exit must use HH:MM format",
+            )
+        expected = datetime.combine(datetime.utcnow().date(), expected_time)
 
     visitor = Visitor(
-        name=body.name, id_number=body.id_number, phone=body.phone,
-        reason=body.reason, host=body.host,
-        temp_pass=secrets.token_hex(8), expected_exit=expected
+        name=body.name,
+        id_number=body.id_number,
+        phone=body.phone,
+        reason=body.reason,
+        host=body.host,
+        temp_pass=secrets.token_hex(8),
+        expected_exit=expected,
     )
-    db.add(visitor); db.commit(); db.refresh(visitor)
+    try:
+        db.add(visitor)
+        db.commit()
+        db.refresh(visitor)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not register visitor")
+
     return {
-        "id": visitor.id, "name": visitor.name, "id_number": visitor.id_number,
-        "reason": visitor.reason, "host": visitor.host,
-        "time_in": visitor.time_in.strftime("%I:%M %p"),
+        "id": visitor.id,
+        "name": visitor.name,
+        "id_number": visitor.id_number,
+        "reason": visitor.reason,
+        "host": visitor.host,
+        "time_in": visitor.time_in.strftime("%I:%M %p") if visitor.time_in else "",
         "expected_exit": visitor.expected_exit.strftime("%I:%M %p") if visitor.expected_exit else "",
-        "checked_out": False,
+        "checked_out": visitor.checked_out,
     }
+
 
 @router.patch("/visitors/{visitor_id}/checkout")
 def checkout_visitor(visitor_id: int, db: Session = Depends(get_db), _=Depends(require_guard)):
@@ -91,9 +114,19 @@ def checkout_visitor(visitor_id: int, db: Session = Depends(get_db), _=Depends(r
 
 # ── Alerts ────────────────────────────────────────────────────────────────────
 class AlertCreate(BaseModel):
-    type: str
-    gate_id: Optional[int] = None
-    description: str
+    type: Literal[
+        "invalid_qr",
+        "blacklisted",
+        "overstay",
+        "repeated_fail",
+        "lockdown",
+        "qr_expired",
+        "qr_compromised",
+        "manual",
+    ]
+    gate_id: int | None = Field(default=None, gt=0)
+    description: str = Field(min_length=3, max_length=2000)
+
 
 @router.get("/alerts")
 def list_alerts(db: Session = Depends(get_db), _=Depends(require_guard)):
@@ -109,15 +142,39 @@ def list_alerts(db: Session = Depends(get_db), _=Depends(require_guard)):
     ]
 
 @router.post("/alerts")
-def create_alert(body: AlertCreate, db: Session = Depends(get_db), guard=Depends(require_guard)):
-    a = Alert(type=body.type, gate_id=body.gate_id, description=body.description)
-    db.add(a); db.commit(); db.refresh(a)
+def create_alert(
+    body: AlertCreate,
+    db: Session = Depends(get_db),
+    guard: User = Depends(require_guard),
+):
+    if body.gate_id is not None:
+        gate = db.query(Gate).filter(Gate.id == body.gate_id).first()
+        if not gate:
+            raise HTTPException(status_code=404, detail="Gate not found")
+
+    alert = Alert(
+        type=body.type,
+        gate_id=body.gate_id,
+        description=body.description,
+        user_id=guard.id if body.type == "manual" else None,
+    )
+    try:
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not create alert")
+
     return {
-        "id": a.id, "type": a.type, "description": a.description,
-        "resolved": False,
-        "gate": f"Gate {a.gate_id}" if a.gate_id else "Unknown Gate",
-        "timestamp": a.timestamp.strftime("%I:%M %p") if a.timestamp else "",
+        "id": alert.id,
+        "type": alert.type,
+        "description": alert.description,
+        "resolved": alert.resolved,
+        "gate": f"Gate {alert.gate_id}" if alert.gate_id else "Unknown Gate",
+        "timestamp": alert.timestamp.strftime("%I:%M %p") if alert.timestamp else "",
     }
+
 
 @router.patch("/alerts/{alert_id}/resolve")
 def resolve_alert(alert_id: int, db: Session = Depends(get_db), _=Depends(require_guard)):
