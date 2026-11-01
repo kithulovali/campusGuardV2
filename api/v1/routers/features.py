@@ -216,30 +216,47 @@ eted"}
 # FEATURE 4 — QR COMPROMISE / LOST CARD
 # ══════════════════════════════════════════════════════════════════════════════
 @router.post("/users/{user_id}/report-qr-lost")
-def report_qr_lost(user_id: int, db: Session = Depends(get_db), current=Depends(get_current_user)):
-    # Student can only report their own; admin can report any
-    if current.role not in ("admin",) and current.id != user_id:
-        raise HTTPException(403, "Can only report your own QR")
+def report_qr_lost(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    if current.role != "admin" and current.id != user_id:
+        raise HTTPException(status_code=403, detail="Can only report your own QR")
 
     user = db.query(User).filter(User.id == user_id).first()
-    if not user: raise HTTPException(404, "User not found")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    old_qr   = user.qr_code
+    old_qr = user.qr_code
     new_hash = generate_qr_hash((user.reg_number or str(user.id)) + secrets.token_hex(4))
+    new_qr_path = generate_qr_image(new_hash, user.full_name)
     user.qr_code = new_hash
+    db.add(
+        Alert(
+            user_id=user.id,
+            type="qr_compromised",
+            description=(
+                f"{user.full_name} reported QR card lost/stolen. "
+                "The previous QR was invalidated and a replacement was generated."
+            ),
+        )
+    )
+    audit(db, current, "user.qr_regenerate", "user", user_id)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if os.path.exists(new_qr_path):
+            os.remove(new_qr_path)
+        raise HTTPException(status_code=500, detail="Could not regenerate QR code")
 
-    # Remove old QR image
-    old_path = QR_DIR / f"{old_qr}.png" if old_qr else None
-    if old_path and old_path.exists():
-        old_path.unlink()
-    generate_qr_image(new_hash, user.full_name)
+    old_qr_path = QR_DIR / f"{old_qr}.png" if old_qr else None
+    if old_qr_path and old_qr_path.exists():
+        old_qr_path.unlink()
 
-    alert = Alert(user_id=user.id, type="qr_compromised",
-                  description=f"{user.full_name} reported QR card lost/stolen. Old QR invalidated, new QR generated.")
-    db.add(alert)
-    audit(db, current, "user.qr_regenerate", "user", user_id, {"old_qr": old_qr, "new_qr": new_hash})
-    db.commit()
     return {"message": "QR invalidated and regenerated", "new_qr": new_hash}
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FEATURE 5 — GUARD STATISTICS
@@ -542,20 +559,40 @@ def get_audit_logs(limit: int = 100, db: Session = Depends(get_db), _=Depends(re
 # FEATURE 12 — QR EXPIRY
 # ══════════════════════════════════════════════════════════════════════════════
 @router.post("/users/{user_id}/renew-qr")
-def renew_qr(user_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def renew_qr(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
     user = db.query(User).filter(User.id == user_id).first()
-    if not user: raise HTTPException(404, "User not found")
-    old_qr   = user.qr_code
-    new_hash = generate_qr_hash(user.reg_number + secrets.token_hex(4))
-    user.qr_code   = new_hash
-    user.qr_expires = datetime.utcnow() + timedelta(days=180)
-    old_path = QR_DIR / f"{old_qr}.png" if old_qr else None
-    if old_path and old_path.exists():
-        old_path.unlink()
-    generate_qr_image(new_hash, user.full_name)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    old_qr = user.qr_code
+    new_hash = generate_qr_hash((user.reg_number or str(user.id)) + secrets.token_hex(4))
+    new_expiry = datetime.utcnow() + timedelta(days=180)
+    new_qr_path = generate_qr_image(new_hash, user.full_name)
+    user.qr_code = new_hash
+    user.qr_expires = new_expiry
     audit(db, admin, "user.qr_renew", "user", user_id)
-    db.commit()
-    return {"message": "QR renewed", "new_qr": new_hash, "expires": user.qr_expires.isoformat()}
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if os.path.exists(new_qr_path):
+            os.remove(new_qr_path)
+        raise HTTPException(status_code=500, detail="Could not renew QR code")
+
+    old_qr_path = QR_DIR / f"{old_qr}.png" if old_qr else None
+    if old_qr_path and old_qr_path.exists():
+        old_qr_path.unlink()
+
+    return {
+        "message": "QR renewed",
+        "new_qr": new_hash,
+        "expires": user.qr_expires.isoformat(),
+    }
+
 
 @router.get("/users/expired-qr")
 def list_expired_qr(db: Session = Depends(get_db), _=Depends(require_admin)):
