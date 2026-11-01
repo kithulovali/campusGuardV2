@@ -549,8 +549,9 @@ def renew_qr(user_id: int, db: Session = Depends(get_db), admin=Depends(require_
     new_hash = generate_qr_hash(user.reg_number + secrets.token_hex(4))
     user.qr_code   = new_hash
     user.qr_expires = datetime.utcnow() + timedelta(days=180)
-    old_path = f"static/qr_codes/{old_qr}.png"
-    if os.path.exists(old_path): os.remove(old_path)
+    old_path = QR_DIR / f"{old_qr}.png" if old_qr else None
+    if old_path and old_path.exists():
+        old_path.unlink()
     generate_qr_image(new_hash, user.full_name)
     audit(db, admin, "user.qr_renew", "user", user_id)
     db.commit()
