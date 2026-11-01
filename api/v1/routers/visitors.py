@@ -11,7 +11,7 @@ from services.visitor_service import checkout_visitor as checkout_visitor_record
 from services.visitor_service import list_visitors as list_visitor_records
 from services.visitor_service import register_visitor
 
-router = APIRouter()
+router = APIRouter(tags=["Visitors"])
 
 
 @router.get("/visitors")
