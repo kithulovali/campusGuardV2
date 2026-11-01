@@ -5,7 +5,7 @@ from core.dependencies import require_guard
 from db.session import get_db
 from services.dashboard_service import get_campus_occupancy
 
-router = APIRouter()
+router = APIRouter(tags=["Campus Monitoring"])
 
 
 @router.get("/campus/live")
