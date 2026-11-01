@@ -25,7 +25,7 @@ def register(payload: RegistrationRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    return AuthService(db).login(payload.username, payload.password)
+    return AuthService(db).login(payload.identifier, payload.password)
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
