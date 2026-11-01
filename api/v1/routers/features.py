@@ -279,9 +279,22 @@ class PreRegRequest(BaseModel):
     expected_time: str   # HH:MM
 
 @router.post("/visitors/pre-register")
-def pre_register_visitor(body: PreRegRequest, db: Session = Depends(get_db), host=Depends(get_current_user)):
+def pre_register_visitor(
+    body: PreRegRequest,
+    db: Session = Depends(get_db),
+    host: User = Depends(get_current_user),
+):
     token = secrets.token_urlsafe(32)
-    try:\n        expected_dt = datetime.strptime(\n            f"{body.expected_date} {body.expected_time}", "%Y-%m-%d %H:%M"\n        )\n    except ValueError:\n        raise HTTPException(\n            status_code=422,\n            detail="expected_date must be YYYY-MM-DD and expected_time must be HH:MM",\n        )
+    try:
+        expected_dt = datetime.strptime(
+            f"{body.expected_date} {body.expected_time}",
+            "%Y-%m-%d %H:%M",
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="expected_date must be YYYY-MM-DD and expected_time must be HH:MM",
+        )
 
     visitor = Visitor(
         name=body.visitor_name,
@@ -296,25 +309,30 @@ def pre_register_visitor(body: PreRegRequest, db: Session = Depends(get_db), hos
         expected_exit=expected_dt,
         checked_out=False,
     )
-    db.add(visitor)
-    db.flush()
-    audit(
-        db,
-        host,
-        "visitor.pre_register",
-        "visitor",
-        visitor.id,
-        {"name": body.visitor_name, "date": body.expected_date},
-    )
-    db.commit()
-    db.refresh(visitor)
+    try:
+        db.add(visitor)
+        db.flush()
+        audit(
+            db,
+            host,
+            "visitor.pre_register",
+            "visitor",
+            visitor.id,
+            {"name": body.visitor_name, "date": body.expected_date},
+        )
+        db.commit()
+        db.refresh(visitor)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not create visitor pre-registration")
 
     return {
         "visitor_id": visitor.id,
         "token": token,
         "checkin_link": f"/visitor-checkin/{token}",
-        "message": f"Pre-registration created for {body.visitor_name}"
+        "message": f"Pre-registration created for {body.visitor_name}",
     }
+
 
 @router.get("/visitors/checkin/{token}")
 def visitor_checkin(token: str, db: Session = Depends(get_db)):
