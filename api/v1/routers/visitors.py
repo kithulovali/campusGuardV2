@@ -1,68 +1,58 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc, func
-from datetime import datetime, timedelta
-from typing import Literal
-import io, secrets
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from core.dependencies import require_guard
 from db.session import get_db
-from models import Visitor, Alert, Entry, Gate, User
+from models.user import User
 from schemas.schemas import VisitorCreate
-from core.dependencies import get_current_user, require_guard, require_admin
-from pydantic import BaseModel, Field
-from typing import Optional
+from services.visitor_service import checkout_visitor as checkout_visitor_record
+from services.visitor_service import list_visitors as list_visitor_records
+from services.visitor_service import register_visitor
 
 router = APIRouter()
 
-# ── Visitors ──────────────────────────────────────────────────────────────────
+
 @router.get("/visitors")
 def list_visitors(db: Session = Depends(get_db), _=Depends(require_guard)):
-    visitors = db.query(Visitor).order_by(desc(Visitor.time_in)).limit(100).all()
+    visitors = list_visitor_records(db)
     return [
         {
-            "id": v.id, "name": v.name, "id_number": v.id_number,
-            "reason": v.reason, "host": v.host,
-            "time_in": v.time_in.strftime("%I:%M %p") if v.time_in else "",
-            "expected_exit": v.expected_exit.strftime("%I:%M %p") if v.expected_exit else "",
-            "checked_out": v.checked_out,
+            "id": visitor.id,
+            "name": visitor.name,
+            "id_number": visitor.id_number,
+            "reason": visitor.reason,
+            "host": visitor.host,
+            "time_in": visitor.time_in.strftime("%I:%M %p") if visitor.time_in else "",
+            "expected_exit": visitor.expected_exit.strftime("%I:%M %p") if visitor.expected_exit else "",
+            "checked_out": visitor.checked_out,
         }
-        for v in visitors
+        for visitor in visitors
     ]
 
+
 @router.post("/visitors")
-def create_visitor(
-    body: VisitorCreate,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_guard),
-):
-    expected = None
+def create_visitor(body: VisitorCreate, db: Session = Depends(get_db), _: User = Depends(require_guard)):
+    expected_exit = None
     if body.expected_exit:
         try:
             expected_time = datetime.strptime(body.expected_exit, "%H:%M").time()
-        except ValueError:
-            raise HTTPException(
-                status_code=422,
-                detail="expected_exit must use HH:MM format",
-            )
-        expected = datetime.combine(datetime.utcnow().date(), expected_time)
-
-    visitor = Visitor(
-        name=body.name,
-        id_number=body.id_number,
-        phone=body.phone,
-        reason=body.reason,
-        host=body.host,
-        temp_pass=secrets.token_hex(8),
-        expected_exit=expected,
-    )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="expected_exit must use HH:MM format") from exc
+        expected_exit = datetime.combine(datetime.utcnow().date(), expected_time)
     try:
-        db.add(visitor)
-        db.commit()
-        db.refresh(visitor)
-    except Exception:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Could not register visitor")
-
+        visitor = register_visitor(
+            db,
+            name=body.name,
+            id_number=body.id_number,
+            phone=body.phone,
+            reason=body.reason,
+            host=body.host,
+            expected_exit=expected_exit,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not register visitor") from exc
     return {
         "id": visitor.id,
         "name": visitor.name,
@@ -76,22 +66,15 @@ def create_visitor(
 
 
 @router.patch("/visitors/{visitor_id}/checkout")
-def checkout_visitor(
-    visitor_id: int,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_guard),
-):
+def checkout_visitor(visitor_id: int, db: Session = Depends(get_db), _: User = Depends(require_guard)):
+    from models.visitor import Visitor
     visitor = db.query(Visitor).filter(Visitor.id == visitor_id).first()
-    if not visitor:
+    if visitor is None:
         raise HTTPException(status_code=404, detail="Visitor not found")
     if visitor.checked_out:
         raise HTTPException(status_code=409, detail="Visitor is already checked out")
-
-    visitor.checked_out = True
-    visitor.checkout_time = datetime.utcnow()
     try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Could not check out visitor")
+        checkout_visitor_record(db, visitor)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not check out visitor") from exc
     return {"message": "Checked out"}
