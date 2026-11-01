@@ -1,55 +1,68 @@
-# CampusGuard
+# CampusGuard Backend
 
-CampusGuard is a backend-first campus access-control and security monitoring API. The React client is maintained separately and is not part of the backend architecture or deployment on this branch.
+Backend-only FastAPI service for campus access control and security monitoring. The frontend is intentionally excluded from this branch.
 
-## Backend stack
+## Stack
 
-- FastAPI with versioned REST endpoints under `/api/v1`
-- SQLAlchemy 2.x typed declarative mappings and `select()` statements
-- Pydantic v2 request/response validation
-- Repository layer for persistence queries
-- Service layer for application and business rules
-- Router layer for HTTP contracts and dependency injection
-- MySQL through PyMySQL
+- FastAPI and Pydantic v2
+- SQLAlchemy 2.x
+- SQLite through Turso/libSQL, or MySQL through PyMySQL
+- Alembic for schema migrations
+- Repository, service, and router layers
 - JWT access and refresh tokens
 
-## Backend structure
+## Project structure
 
 ```text
-CampusGuard/
-  app/
-    api/v1/
-      routers/       # HTTP endpoints
-      endpoints/     # Feature endpoints being migrated into routers
-    core/             # Settings, security, authorization
-    db/               # Engine, session and declarative base
-    models/           # SQLAlchemy ORM models
-    repositories/     # SQLAlchemy persistence operations
-    schemas/          # Pydantic v2 contracts
-    services/         # Application/business logic
-    utils/
-  main.py
-  requirements.txt
+campusGuardV2/
+├── app/
+│   ├── api/v1/
+│   │   ├── endpoints/    # Existing feature endpoints
+│   │   └── routers/      # Refactored auth and user routers
+│   ├── core/
+│   ├── db/
+│   ├── models/
+│   ├── repositories/
+│   ├── schemas/
+│   ├── services/
+│   └── utils/
+├── .env.example
+├── main.py
+├── requirements.txt
+└── seed.py
 ```
 
-## Configuration
+## Configure Turso
 
-Copy `.env.example` to `.env` inside `CampusGuard/`. Set either `DATABASE_URL` or the individual database variables. Set a unique random `SECRET_KEY` with at least 32 characters. Never commit `.env`.
-
-## Run locally
+Install dependencies and copy the environment template:
 
 ```bash
-cd CampusGuard
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` to the SQLAlchemy libSQL dialect URL. For the database host supplied for this project, the format is:
+
+```text
+sqlite+libsql://campusguard-kithulovali.aws-us-east-2.turso.io?secure=true&authToken=YOUR_TURSO_AUTH_TOKEN
+```
+
+Generate a database authentication token in the Turso dashboard/CLI and replace the placeholder locally. Do not commit the token or the real `.env` file. The dependency `sqlalchemy-libsql` provides the SQLAlchemy dialect and its libSQL client dependency. The application already reads `DATABASE_URL`; if it is unset, it falls back to the MySQL settings.
+
+## Run
+
+```bash
 uvicorn main:app --reload --port 8000
 ```
 
-Open `http://localhost:8000/docs`. API routes are under `/api/v1`.
+API documentation: `http://localhost:8000/docs`. API routes are prefixed with `/api/v1`.
 
-Database schema changes should be delivered as Alembic migrations. Automatic `create_all` is enabled only in development; production must apply migrations before deployment.
+## Database migrations
 
-## Branch scope
+Use Alembic for schema changes. `Base.metadata.create_all()` is retained only as a development bootstrap for a new local database; it does not upgrade an existing Turso database. Apply reviewed migrations before deploying schema changes.
 
-The `master` branch is the isolated backend refactor. It does not modify `CampusGuard-web/`, configure CORS for a frontend, or depend on the React application. The legacy gate, visitor, and reporting feature modules are being migrated into the repository/service/router pattern incrementally; do not treat the branch as a completed production migration until those modules and integration tests are converted.
+## Scope
+
+This branch contains the backend only. The React frontend directory has been removed from this branch; the original `main` branch remains unchanged. Some legacy gate, visitor, and reporting feature endpoints still require migration into the repository/service/router pattern and automated integration testing before production readiness.
