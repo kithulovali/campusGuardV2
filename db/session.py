@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from urllib.parse import urlsplit
 
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -11,8 +12,30 @@ class Base(DeclarativeBase):
 
 
 def build_database_url() -> str | URL:
+    if settings.turso_database_url:
+        parsed = urlsplit(settings.turso_database_url)
+        if parsed.scheme != "libsql" or not parsed.hostname:
+            raise RuntimeError(
+                "TURSO_DATABASE_URL must be a valid libsql:// database URL."
+            )
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise RuntimeError(
+                "TURSO_DATABASE_URL must contain only the libsql:// host; "
+                "provide authentication separately with TURSO_AUTH_TOKEN."
+            )
+        return URL.create(
+            "sqlite+libsql",
+            host=parsed.hostname,
+            port=parsed.port,
+            query={
+                "secure": "true",
+                "authToken": settings.turso_auth_token,
+            },
+        )
+
     if settings.database_url:
         return settings.database_url
+
     return URL.create(
         "mysql+pymysql",
         username=settings.db_user,
