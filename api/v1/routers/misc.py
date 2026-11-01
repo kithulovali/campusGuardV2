@@ -189,7 +189,8 @@ def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
 # ── Reports ───────────────────────────────────────────────────────────────────
 @router.get("/reports/generate")
 def generate_report(
-    type: str = Query(default="daily", pattern="^(daily|monthly|six_months)$"),\n    format: str = Query(default="pdf", pattern="^(pdf|xlsx)$"),
+    type: str = Query(default="daily", pattern="^(daily|monthly|six_months)$"),
+    format: str = Query(default="pdf", pattern="^(pdf|xlsx)$"),
     db: Session = Depends(get_db), _=Depends(require_admin)
 ):
     today = datetime.utcnow().date()
