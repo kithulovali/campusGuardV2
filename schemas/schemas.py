@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 
 Role = Literal["admin", "guard", "student", "staff", "lecturer"]
 UserStatus = Literal["active", "inactive", "blacklisted"]
@@ -11,7 +11,12 @@ class ORMModel(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=120)
+    identifier: str = Field(
+        min_length=1,
+        max_length=120,
+        validation_alias=AliasChoices("identifier", "username"),
+        description="Account email address or registration number. The legacy username field is also accepted.",
+    )
     password: str = Field(min_length=1, max_length=128)
 
 
