@@ -150,12 +150,41 @@ def get_entries(user_id: int | None = None, limit: int = 50, db: Session = Depen
 @router.get("/dashboard/stats")
 def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
     today = datetime.utcnow().date()
-    total_users = db.query(func.count(User.id)).scalar()
-    ins   = db.query(func.count(Entry.id)).filter(func.date(Entry.scanned_at)==today, Entry.direction=="in").scalar()
-    outs  = db.query(func.count(Entry.id)).filter(func.date(Entry.scanned_at)==today, Entry.direction=="out").scalar()
-    alerts= db.query(func.count(Alert.id)).filter(func.date(Alert.timestamp)==today, Alert.resolved==False).scalar()
-    vis   = db.query(func.count(Visitor.id)).filter(func.date(Visitor.time_in)==today).scalar()
-    return {"total_users": total_users, "on_campus": sum(1 for direction in latest_by_user.values() if direction == "in"), "alerts_today": alerts, "visitors_today": vis}
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    latest_entries = (
+        db.query(Entry.user_id, Entry.direction, Entry.scanned_at, Entry.id)
+        .filter(func.date(Entry.scanned_at) == today)
+        .order_by(Entry.scanned_at, Entry.id)
+        .all()
+    )
+    latest_by_user = {}
+    for user_id, direction, _, _ in latest_entries:
+        latest_by_user[user_id] = direction
+
+    alerts = (
+        db.query(func.count(Alert.id))
+        .filter(
+            func.date(Alert.timestamp) == today,
+            Alert.resolved.is_(False),
+        )
+        .scalar()
+        or 0
+    )
+    visitors = (
+        db.query(func.count(Visitor.id))
+        .filter(func.date(Visitor.time_in) == today)
+        .scalar()
+        or 0
+    )
+    return {
+        "total_users": total_users,
+        "on_campus": sum(
+            1 for direction in latest_by_user.values() if direction == "in"
+        ),
+        "alerts_today": alerts,
+        "visitors_today": visitors,
+    }
+
 
 # ── Reports ───────────────────────────────────────────────────────────────────
 @router.get("/reports/generate")
