@@ -1,157 +1,68 @@
-import hashlib
-from io import BytesIO
-from pathlib import Path
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
-from PIL import Image as PILImage, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from core.dependencies import get_current_user
 from db.session import get_db
 from models import User
-from services.audit_service import record_audit
-
-PHOTO_DIR = Path(__file__).resolve().parents[3] / "static" / "photos"
-MAX_PHOTO_BYTES = 5 * 1024 * 1024
-ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
-
+from services.photo_service import ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES, delete_user_photo, get_user_photo_path, photo_etag, save_user_photo
 
 router = APIRouter()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FEATURE 3 — PHOTO UPLOAD
-# ═════════════════════════════════════════════════════════════════════PHOTO_DIR = Path(__file__).resolve().parents[3] / "static" / "photos"
-MAX_PHOTO_BYTES = 5 * 1024 * 1024
-ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+def _authorize_photo_change(current: User, user_id: int) -> None:
+    if current.role != "admin" and current.id != user_id:
+        raise HTTPException(status_code=403, detail="Can only manage your own photo")
 
 
 @router.post("/users/{user_id}/photo")
-async def upload_photo(
-    user_id: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current: User = Depends(get_current_user),
-):
-    if current.role != "admin" and current.id != user_id:
-        raise HTTPException(status_code=403, detail="Can only upload your own photo")
-
+async def upload_photo(user_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    _authorize_photo_change(current, user_id)
     user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     if file.content_type not in ALLOWED_PHOTO_TYPES:
         raise HTTPException(status_code=415, detail="Only JPEG, PNG, and WebP images are accepted")
-
     content = await file.read(MAX_PHOTO_BYTES + 1)
     await file.close()
-    if not content:
-        raise HTTPException(status_code=400, detail="Uploaded image is empty")
-    if len(content) > MAX_PHOTO_BYTES:
-        raise HTTPException(status_code=413, detail="Photo must not exceed 5 MB")
-
     try:
-        with PILImage.open(BytesIO(content)) as image:
-            image.verify()
-        with PILImage.open(BytesIO(content)) as image:
-            image = image.convert("RGB")
-            image.thumbnail((1600, 1600), PILImage.Resampling.LANCZOS)
-            PHOTO_DIR.mkdir(parents=True, exist_ok=True)
-            filename = f"user-{user.id}-{uuid.uuid4().hex}.jpg"
-            destination = PHOTO_DIR / filename
-            image.save(destination, format="JPEG", quality=88, optimize=True)
-    except (UnidentifiedImageError, OSError, ValueError, PILImage.DecompressionBombError):
-        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
-
-    previous_photo = user.photo
-    user.photo = f"/static/photos/{filename}"
-    try:
-        record_record_audit(db, current, "user.photo_upload", "user", user_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        destination.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail="Could not save photo record")
-
-    if previous_photo:
-        old_path = PHOTO_DIR / Path(previous_photo).name
-        if old_path != destination:
-            old_path.unlink(missing_ok=True)
-            for variant in ("thumb", "small"):
-                (PHOTO_DIR / f"{old_path.stem}_{variant}.jpg").unlink(missing_ok=True)
-
-    return {"photo_url": user.photo}
+        photo_url = save_user_photo(db, user, current, content)
+    except OverflowError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except ValueError as exc:
+        status_code = 400 if str(exc) != "Uploaded file is empty" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not save photo record") from exc
+    return {"photo_url": photo_url}
 
 
 @router.get("/users/{user_id}/photo")
-def get_photo(
-    user_id: int,
-    size: str = Query(default="full", pattern="^(full|thumb|small)$"),
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
+def get_photo(user_id: int, size: str = Query(default="full", pattern="^(full|thumb|small)$"), db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     user = db.query(User).filter(User.id == user_id).first()
-    if not user or not user.photo:
+    if user is None:
         raise HTTPException(status_code=404, detail="No photo")
-
-    source_path = PHOTO_DIR / Path(user.photo).name
-    if not source_path.is_file():
-        raise HTTPException(status_code=404, detail="Photo file not found")
-
-    selected_path = source_path
-    if size in {"thumb", "small"}:
-        selected_path = PHOTO_DIR / f"{source_path.stem}_{size}.jpg"
-        if not selected_path.is_file():
-            dimensions = {"thumb": (80, 80), "small": (160, 160)}
-            try:
-                with PILImage.open(source_path) as image:
-                    image = image.convert("RGB")
-                    image.thumbnail(dimensions[size], PILImage.Resampling.LANCZOS)
-                    image.save(selected_path, format="JPEG", quality=82, optimize=True)
-            except (UnidentifiedImageError, OSError):
-                raise HTTPException(status_code=500, detail="Stored photo could not be processed")
-
-    digest = hashlib.sha256(selected_path.read_bytes()).hexdigest()
+    try:
+        path = get_user_photo_path(user, size)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return FileResponse(
-        selected_path,
+        path,
         media_type="image/jpeg",
-        headers={
-            "Cache-Control": "private, max-age=3600",
-            "ETag": f'"{digest}"',
-            "Vary": "Authorization",
-        },
+        headers={"Cache-Control": "private, max-age=3600", "ETag": f'"{photo_etag(path)}"', "Vary": "Authorization"},
     )
 
 
 @router.delete("/users/{user_id}/photo")
-def delete_photo(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current: User = Depends(get_current_user),
-):
-    if current.role != "admin" and current.id != user_id:
-        raise HTTPException(status_code=403, detail="Can only delete your own photo")
-
+def delete_photo(user_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    _authorize_photo_change(current, user_id)
     user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-
-    if user.photo:
-        old_path = PHOTO_DIR / Path(user.photo).name
-        user.photo = None
-        try:
-            audit(db, current, "user.photo_delete", "user", user_id)
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Could not delete photo record")
-        old_path.unlink(missing_ok=True)
-        for variant in ("thumb", "small"):
-            (PHOTO_DIR / f"{old_path.stem}_{variant}.jpg").unlink(missing_ok=True)
-
+    try:
+        delete_user_photo(db, user, current)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not delete photo record") from exc
     return {"message": "Photo deleted"}
-
-
-
-# ══════════════════════════════════════════════════════════════════════════════
