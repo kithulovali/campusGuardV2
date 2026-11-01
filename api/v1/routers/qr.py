@@ -1,26 +1,15 @@
-from datetime import datetime, timedelta, date
-from io import BytesIO
-from pathlib import Path
-from typing import Optional
-import hashlib
-import io
+from datetime import datetime, timedelta
 import os
 import secrets
-import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import FileResponse, StreamingResponse
-from PIL import Image as PILImage, UnidentifiedImageError
-from pydantic import BaseModel, Field
-from sqlalchemy import desc, func
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from core.dependencies import get_current_user, require_admin, require_guard
-from core.security import hash_password
+from core.dependencies import get_current_user, require_admin
 from db.session import get_db
-from models import Alert, Entry, Gate, SystemState, User, Visitor
-from utils.qr import QR_DIR, generate_qr_hash, generate_qr_image
+from models import Alert, User
 from services.audit_service import record_audit
+from utils.qr import QR_DIR, generate_qr_hash, generate_qr_image
 
 
 router = APIRouter()
@@ -56,7 +45,7 @@ def report_qr_lost(
             ),
         )
     )
-    record_audit(db, current, "user.qr_regenerate", "user", user_id)
+    record_record_audit(db, current, "user.qr_regenerate", "user", user_id)
     try:
         db.commit()
     except Exception:
