@@ -20,7 +20,7 @@ from core.dependencies import get_current_user, require_admin, require_guard
 from core.security import hash_password
 from db.session import get_db
 from models import Alert, AuditLog, Entry, SystemState, User, Visitor
-from utils.qr import generate_qr_hash, generate_qr_image
+from utils.qr import QR_DIR, generate_qr_hash, generate_qr_image
 
 
 router = APIRouter(tags=["features"])
